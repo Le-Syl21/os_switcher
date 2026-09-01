@@ -1,0 +1,11 @@
+[package]
+name = "os-switcher-bcd"
+version = "0.1.0"
+description = "Semantic access to the Windows Boot Configuration Data (BCD) store, built on regf-rs."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+regf-rs.workspace = true

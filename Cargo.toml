@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["Le-Syl21"]
+repository = "https://github.com/Le-Syl21/os_switcher"
+
+[workspace.dependencies]
+regf-rs = "0.1"
