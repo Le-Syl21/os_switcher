@@ -10,3 +10,6 @@ repository = "https://github.com/Le-Syl21/os_switcher"
 
 [workspace.dependencies]
 regf-rs = "0.1"
+os-switcher-efi = { path = "crates/efi" }
+os-switcher-bcd = { path = "crates/bcd" }
+os-switcher-core = { path = "crates/core" }

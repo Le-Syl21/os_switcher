@@ -1,0 +1,16 @@
+[package]
+name = "os-switcher"
+version = "0.1.0"
+description = "Choose the next-boot or default OS on a UEFI multiboot machine (Windows/Linux), UEFI + BCD aware."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "os-switcher"
+path = "src/main.rs"
+
+[dependencies]
+os-switcher-core.workspace = true
+clap = { version = "4", features = ["derive"] }

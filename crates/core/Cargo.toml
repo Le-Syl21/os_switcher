@@ -1,0 +1,15 @@
+[package]
+name = "os-switcher-core"
+version = "0.1.0"
+description = "Unified next-boot / default-OS switcher over UEFI (BootOrder/BootNext) and Windows BCD."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+os-switcher-efi.workspace = true
+os-switcher-bcd.workspace = true
+
+[dev-dependencies]
+regf-rs.workspace = true
