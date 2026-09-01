@@ -4,6 +4,10 @@
 //! UEFI NVRAM (and the BCD) requires elevated privileges: run under `sudo` /
 //! `pkexec` on Linux, or an elevated shell on Windows.
 
+mod gui;
+
+rust_i18n::i18n!("locales");
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -61,6 +65,11 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // No subcommand: launch the GUI.
+    if cli.command.is_none() {
+        return gui::run(cli.bcd);
+    }
+
     // Power commands do not need the boot configuration.
     match &cli.command {
         Some(Command::Reboot) => return Ok(reboot()?),

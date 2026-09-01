@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OS Switcher
+Comment=Choose the next-boot or default operating system
+Exec=os-switcher
+Icon=os-switcher
+Categories=System;Settings;
+Terminal=false

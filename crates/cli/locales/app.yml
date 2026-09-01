@@ -1,0 +1,52 @@
+_version: 2
+
+app_title:
+  en: OS Switcher
+  fr: OS Switcher
+  de: OS Switcher
+  es: OS Switcher
+col_default:
+  en: Default OS
+  fr: OS par défaut
+  de: Standard-OS
+  es: SO predeterminado
+col_next:
+  en: Next boot
+  fr: Prochain démarrage
+  de: Nächster Start
+  es: Próximo arranque
+current_default:
+  en: "Default"
+  fr: "Par défaut"
+  de: "Standard"
+  es: "Predeterminado"
+current_next:
+  en: "Next boot"
+  fr: "Prochain démarrage"
+  de: "Nächster Start"
+  es: "Próximo arranque"
+next_none:
+  en: none (follows default)
+  fr: aucun (suit le défaut)
+  de: keiner (folgt Standard)
+  es: ninguno (sigue el predeterminado)
+reboot:
+  en: Reboot
+  fr: Redémarrer
+  de: Neu starten
+  es: Reiniciar
+shutdown:
+  en: Shut down
+  fr: Éteindre
+  de: Herunterfahren
+  es: Apagar
+language:
+  en: "Language"
+  fr: "Langue"
+  de: "Sprache"
+  es: "Idioma"
+hint_privilege:
+  en: Changing the boot OS asks for authorization.
+  fr: Changer l'OS de démarrage demande une autorisation.
+  de: Das Ändern des Boot-Betriebssystems erfordert eine Berechtigung.
+  es: Cambiar el SO de arranque solicita autorización.
