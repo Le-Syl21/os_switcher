@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use os_switcher_core::{reboot, shutdown, Scope, Switcher};
+use os_switcher_core::{is_root, reboot, run_helper_elevated, shutdown, Scope, Switcher};
 
 #[derive(Parser)]
 #[command(
@@ -77,19 +77,58 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::List => print_entries(&switcher),
         Command::Status => print_status(&switcher),
         Command::Default { selector } => {
-            let e = switcher.set(&selector, Scope::Default)?;
-            println!("default OS set to: {}", e.label);
+            write_action(&mut switcher, &cli.bcd, "default", Some(&selector))?
         }
         Command::Next { selector } => {
-            let e = switcher.set(&selector, Scope::Once)?;
-            println!("next boot armed for: {} (one-shot)", e.label);
+            write_action(&mut switcher, &cli.bcd, "next", Some(&selector))?
         }
-        Command::Clear => {
-            switcher.clear_next()?;
-            println!("one-shot selection cleared");
-        }
+        Command::Clear => write_action(&mut switcher, &cli.bcd, "clear", None)?,
         Command::Reboot | Command::Shutdown => unreachable!("handled above"),
     }
+    Ok(())
+}
+
+/// Performs a write action, elevating through the privileged helper when the
+/// current process is not root. When already root, it acts directly.
+fn write_action<N: os_switcher_core::Nvram>(
+    switcher: &mut Switcher<N>,
+    bcd: &Option<PathBuf>,
+    verb: &str,
+    selector: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if is_root() {
+        match (verb, selector) {
+            ("default", Some(s)) => {
+                println!(
+                    "default OS set to: {}",
+                    switcher.set(s, Scope::Default)?.label
+                )
+            }
+            ("next", Some(s)) => println!(
+                "next boot armed for: {} (one-shot)",
+                switcher.set(s, Scope::Once)?.label
+            ),
+            ("clear", _) => {
+                switcher.clear_next()?;
+                println!("one-shot selection cleared");
+            }
+            _ => unreachable!(),
+        }
+        return Ok(());
+    }
+
+    // Not root: delegate to the privileged helper (graphical auth via pkexec).
+    let bcd_str = bcd.as_ref().map(|p| p.to_string_lossy().into_owned());
+    let mut args: Vec<&str> = Vec::new();
+    if let Some(p) = &bcd_str {
+        args.push("--bcd");
+        args.push(p);
+    }
+    args.push(verb);
+    if let Some(s) = selector {
+        args.push(s);
+    }
+    run_helper_elevated(&args)?;
     Ok(())
 }
 

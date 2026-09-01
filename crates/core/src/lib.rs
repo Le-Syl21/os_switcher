@@ -22,6 +22,9 @@ use os_switcher_efi::Efi;
 
 pub use os_switcher_efi::{Nvram, OsKind};
 
+mod elevate;
+pub use elevate::{is_root, run_helper_elevated};
+
 mod power;
 pub use power::{reboot, shutdown};
 
@@ -79,6 +82,8 @@ pub enum Error {
     Io(std::io::Error),
     /// No entry matched the given selector.
     NotFound(String),
+    /// Privileged helper invocation failed.
+    Elevation(String),
 }
 
 impl std::fmt::Display for Error {
@@ -88,6 +93,7 @@ impl std::fmt::Display for Error {
             Error::Bcd(e) => write!(f, "BCD error: {e}"),
             Error::Io(e) => write!(f, "I/O error: {e}"),
             Error::NotFound(s) => write!(f, "no entry matches '{s}'"),
+            Error::Elevation(m) => write!(f, "privileged helper failed: {m}"),
         }
     }
 }

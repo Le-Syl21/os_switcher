@@ -11,5 +11,8 @@ repository.workspace = true
 os-switcher-efi.workspace = true
 os-switcher-bcd.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 regf-rs.workspace = true

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>os-switcher</vendor>
+  <vendor_url>https://github.com/Le-Syl21/os_switcher</vendor_url>
+
+  <action id="org.le-syl21.os-switcher.manage">
+    <description>Change the boot operating system</description>
+    <message>Authentication is required to change the boot operating system</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <!-- The user physically at the machine (active local session) is not
+           prompted; a remote/SSH session falls back to admin auth. -->
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/os-switcher-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>
