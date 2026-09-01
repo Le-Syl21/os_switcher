@@ -1,5 +1,5 @@
-//! Tests de la sémantique BCD sur une ruche synthétique multi-OS construite
-//! avec regf-rs (aucune donnée machine réelle).
+//! Tests of the BCD semantics on a synthetic multi-OS hive built
+//! with regf-rs (no real machine data).
 
 use os_switcher_bcd::{Bcd, BOOTMGR};
 use regf_rs::{Hive, RegValue};
@@ -8,11 +8,11 @@ const WIN10: &str = "{aaaaaaaa-0000-0000-0000-000000000001}";
 const WIN11: &str = "{aaaaaaaa-0000-0000-0000-000000000002}";
 const UBUNTU: &str = "{aaaaaaaa-0000-0000-0000-000000000003}";
 
-/// Construit un BCD synthétique : trois OS, Windows 10 par défaut.
+/// Builds a synthetic BCD: three OSes, Windows 10 as default.
 fn synthetic_bcd_bytes() -> Vec<u8> {
     let mut h = Hive::new_empty("BCD");
 
-    // Boot Manager : DefaultObject + DisplayOrder.
+    // Boot Manager: DefaultObject + DisplayOrder.
     let bm = format!("Objects\\{BOOTMGR}\\Elements");
     mkval(
         &mut h,
@@ -25,7 +25,7 @@ fn synthetic_bcd_bytes() -> Vec<u8> {
         RegValue::MultiSz(vec![WIN10.into(), WIN11.into(), UBUNTU.into()]),
     );
 
-    // Trois chargeurs d'OS avec description.
+    // Three OS loaders with a description.
     for (guid, desc) in [
         (WIN10, "Windows 10"),
         (WIN11, "Windows 11"),
@@ -91,7 +91,7 @@ fn arms_and_clears_boot_sequence() {
 
 #[test]
 fn rejects_non_bcd() {
-    // Une ruche sans Boot Manager n'est pas un BCD.
+    // A hive with no Boot Manager is not a BCD.
     let bytes = Hive::new_empty("NOTBCD").to_bytes();
     assert!(matches!(
         Bcd::from_bytes(bytes),

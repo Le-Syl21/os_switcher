@@ -1,0 +1,13 @@
+[package]
+name = "os-switcher-efi"
+version = "0.1.0"
+description = "Read and set the UEFI boot order and one-shot next boot (BootOrder / BootNext), on top of efivar."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+# efivar only builds on Linux and Windows; it is the real NVRAM backend. The
+# core logic is backend-agnostic and testable without it.
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+efivar = "2"
