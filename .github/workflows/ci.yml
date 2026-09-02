@@ -1,10 +1,18 @@
 name: CI
 
+# The gate (fmt/clippy/tests) runs on pull requests and on demand. Everything
+# heavier — building the release binaries and signing them — happens only at a
+# "vX.Y.Z" tag: work lands directly on `main`, so a build per commit would be
+# noise, and a signature commits the owner's identity, so it must never go out
+# without an explicit, tagged release.
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
   pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,17 +22,170 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      # Before anything is built or signed, make the tag agree with the version
+      # the release will carry: a v0.1.2 tag over a Cargo.toml still saying 0.1.1
+      # would publish a mislabeled release with nobody noticing.
+      - name: Check that the tag matches the crate version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          tag="${tag%%-*}"
+          crate=$(cargo pkgid -p os-switcher)
+          crate="${crate##*[@#]}"
+          if [ "$tag" != "$crate" ]; then
+            echo "::error::tag $GITHUB_REF_NAME but Cargo.toml says $crate — update Cargo.toml, then re-tag"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME <-> Cargo.toml $crate: OK"
+
       - name: Install GUI build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libwayland-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev
+
       - name: Format
         run: cargo fmt --check
+
       - name: Clippy (strict)
         run: cargo clippy --workspace --all-targets -- -D warnings
+
       - name: Tests
         run: cargo test --workspace
+
+  build:
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04,     target: x86_64-unknown-linux-gnu,  kind: linux }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, kind: linux }
+          - { os: windows-2022,     target: x86_64-pc-windows-msvc,    kind: windows }
+          - { os: windows-11-arm,   target: aarch64-pc-windows-msvc,   kind: windows }
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install GUI build dependencies (Linux)
+        if: matrix.kind == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libwayland-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev
+
+      - name: Build
+        run: cargo build --release -p os-switcher
+
+      - name: Package (Linux)
+        if: matrix.kind == 'linux'
+        run: |
+          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "$name"
+          cp target/release/os-switcher "$name/"
+          cp -r packaging README.md "$name/"
+          tar -czf "$name.tar.gz" "$name"
+
+      - name: Package (Windows)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          $name = "os-switcher-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $name | Out-Null
+          Copy-Item target/release/os-switcher.exe $name/
+          Copy-Item README.md $name/
+          Compress-Archive -Path $name -DestinationPath "$name.zip"
+
+      - name: Upload archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
+          path: os-switcher-${{ github.ref_name }}-${{ matrix.target }}.*
+
+  # Authenticode-sign the Windows binaries with ssign — the Linux runner signs
+  # them via Certum (no Windows, no vendor stack). Behind the `signing`
+  # environment: the Certum secrets are environment secrets (unreadable from the
+  # `build` job, which declares no environment) and a signature commits the
+  # owner's identity, so it must never go out without explicit approval.
+  sign-windows:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: signing
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    steps:
+      - name: Install ssign (prebuilt binary from the latest release)
+        run: |
+          curl -fsSL https://github.com/Le-Syl21/ssign/releases/latest/download/ssign-linux-x86_64.tar.gz | tar xz
+          sudo install -m755 ssign /usr/local/bin/ssign
+
+      - name: Download the archive
+        uses: actions/download-artifact@v4
+        with:
+          name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
+          path: dl
+
+      - name: Sign os-switcher.exe with ssign (via Certum)
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: |
+          cd dl
+          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          unzip -o "$name.zip"
+          ssign --verbose \
+            -n "os-switcher" -u "https://github.com/${{ github.repository }}" \
+            "$name/os-switcher.exe"
+
+          sudo apt-get update -qq && sudo apt-get install -y osslsigncode
+          # Check the facts, not the presence of a sentence: a mismatched digest
+          # and an untimestamped signature both print reassuring lines, yet
+          # Windows rejects the first and treats the second as expired the day
+          # the certificate does.
+          out=$(osslsigncode verify "$name/os-switcher.exe" 2>&1) || true
+          echo "$out"
+          echo "$out" | grep -q "MISMATCH" && { echo "::error::invalid Authenticode digest"; exit 1; }
+          echo "$out" | grep -q "Timestamp is not available" && { echo "::error::signature is not timestamped"; exit 1; }
+          echo "$out" | grep -q "Signature verification: ok" || { echo "::error::signature verification failed"; exit 1; }
+
+          rm -f "$name.zip"
+          zip -r "$name.zip" "$name"
+
+      - name: Re-upload the signed archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
+          path: dl/os-switcher-${{ github.ref_name }}-${{ matrix.target }}.zip
+          overwrite: true
+
+  release:
+    needs: [build, sign-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the release and upload assets
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          draft: false
+          generate_release_notes: true
+          # Pre-release tags (v*-rc/-beta) are flagged as such in the GitHub UI.
+          prerelease: ${{ contains(github.ref_name, '-') }}

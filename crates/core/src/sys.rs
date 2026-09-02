@@ -7,6 +7,9 @@ use std::process::Command;
 /// The binary is a GUI-subsystem executable on Windows, so a child process
 /// started the ordinary way would pop up (and immediately close) a console.
 pub fn quiet_command(program: &str) -> Command {
+    // `mut` is only used on Windows, where the block below configures the
+    // command; elsewhere the binding is returned untouched.
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut command = Command::new(program);
     #[cfg(windows)]
     {
