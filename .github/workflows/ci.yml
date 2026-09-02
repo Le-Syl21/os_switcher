@@ -35,8 +35,11 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           tag="${tag%%-*}"
-          crate=$(cargo pkgid -p os-switcher)
-          crate="${crate##*[@#]}"
+          # `cargo metadata --no-deps` reports the manifest version without
+          # needing a Cargo.lock (this repo does not track one), and without
+          # assuming where the `version` field sits in Cargo.toml.
+          crate=$(cargo metadata --no-deps --format-version=1 \
+            | jq -r '.packages[] | select(.name=="os-switcher") | .version')
           if [ "$tag" != "$crate" ]; then
             echo "::error::tag $GITHUB_REF_NAME but Cargo.toml says $crate — update Cargo.toml, then re-tag"
             exit 1
