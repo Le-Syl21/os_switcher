@@ -27,6 +27,23 @@ mod windows_icon {
 
         let mut resource = winresource::WindowsResource::new();
         resource.set_icon(ico.to_str().expect("OUT_DIR is valid UTF-8"));
+
+        // Windows shows `FileDescription` — not the file name — as the
+        // application's name in the UAC consent dialog, Task Manager and the
+        // file's properties. That is a display name, so give it one.
+        resource.set("FileDescription", "OS Switcher");
+
+        // `winresource` fills in neither of these, though Cargo knows both.
+        // A signed build shows them next to the certificate, so derive them
+        // from the manifest rather than repeating anything by hand.
+        let authors = std::env::var("CARGO_PKG_AUTHORS").unwrap_or_default();
+        let authors = authors.replace(';', ", ");
+        if !authors.is_empty() {
+            resource.set("CompanyName", &authors);
+            let license = std::env::var("CARGO_PKG_LICENSE").unwrap_or_default();
+            resource.set("LegalCopyright", &format!("© {authors} — {license}"));
+        }
+
         if let Err(e) = resource.compile() {
             // A missing resource compiler must not stop the build: the app then
             // ships without a file icon, which is cosmetic.
