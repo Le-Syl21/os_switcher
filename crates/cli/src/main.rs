@@ -282,8 +282,11 @@ fn escalate(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
         return Err("could not obtain the required privileges".into());
     }
 
+    // Create it here, unprivileged, so the file belongs to this user: the
+    // elevated half only rewrites it, and /tmp's sticky bit does not then stop
+    // us from cleaning up after a root-owned leftover.
     let relay = std::env::temp_dir().join(format!("os-switcher-out-{}.txt", std::process::id()));
-    let _ = std::fs::remove_file(&relay);
+    std::fs::write(&relay, "")?;
 
     let mut args: Vec<OsString> = std::env::args_os().skip(1).collect();
     args.push("--relay".into());
