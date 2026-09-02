@@ -16,14 +16,18 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Run the JavaScript actions on Node 24: several pinned versions still declare
+  # Node 20 in their metadata, which the runner now warns is deprecated. This
+  # forces the supported runtime without waiting for each action to update.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
         with:
           components: rustfmt, clippy
 
@@ -75,9 +79,9 @@ jobs:
           - { os: windows-2022,     target: x86_64-pc-windows-msvc,    kind: windows }
           - { os: windows-11-arm,   target: aarch64-pc-windows-msvc,   kind: windows }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # stable
 
       - name: Install GUI build dependencies (Linux)
         if: matrix.kind == 'linux'
@@ -109,7 +113,7 @@ jobs:
           Compress-Archive -Path $name -DestinationPath "$name.zip"
 
       - name: Upload archive artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
           path: os-switcher-${{ github.ref_name }}-${{ matrix.target }}.*
@@ -134,7 +138,7 @@ jobs:
           sudo install -m755 ssign /usr/local/bin/ssign
 
       - name: Download the archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
           path: dl
@@ -166,7 +170,7 @@ jobs:
           zip -r "$name.zip" "$name"
 
       - name: Re-upload the signed archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
           path: dl/os-switcher-${{ github.ref_name }}-${{ matrix.target }}.zip
@@ -180,12 +184,12 @@ jobs:
       contents: write # create the release and upload assets
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
       - name: Create the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
         with:
           files: artifacts/**/*
           draft: false
