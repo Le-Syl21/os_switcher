@@ -20,13 +20,24 @@ use std::path::PathBuf;
 use os_switcher_bcd::Bcd;
 use os_switcher_efi::Efi;
 
-pub use os_switcher_efi::{Nvram, OsKind};
+pub use os_switcher_efi::{Nvram, OsKind, SystemNvram};
 
 mod elevate;
-pub use elevate::{is_root, run_helper_elevated};
+#[cfg(windows)]
+pub use elevate::relaunch_self_elevated;
+pub use elevate::{is_elevated, run_self_elevated};
 
 mod power;
 pub use power::{reboot, shutdown};
+
+mod sys;
+
+#[cfg(windows)]
+mod bcdedit;
+
+/// Permanent elevation through a Windows scheduled task.
+#[cfg(windows)]
+pub mod task;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod detect;
@@ -66,12 +77,87 @@ pub struct Entry {
     target: BootTarget,
 }
 
+/// How a paired BCD store is written back — and re-read afterwards.
+enum BcdStore {
+    /// A hive file we own end to end: the ESP, as seen from Linux.
+    File(PathBuf),
+    /// The live store of a running Windows. Its hive is held open by the
+    /// kernel, so it is driven through `bcdedit` instead of edited in place.
+    #[cfg(windows)]
+    Live,
+    /// In memory only, for tests.
+    #[cfg(test)]
+    Memory,
+}
+
 /// A loaded BCD paired with the UEFI entry that reaches it.
 struct BcdSlot {
     efi_id: u16,
     bcd: Bcd,
-    /// Where to write the BCD back, if it should be persisted.
-    path: Option<PathBuf>,
+    store: BcdStore,
+}
+
+impl BcdSlot {
+    /// Makes `guid` the default OS of this store.
+    fn set_default(&mut self, guid: &str) -> Result<()> {
+        match &self.store {
+            BcdStore::File(path) => {
+                self.bcd.set_default(guid)?;
+                self.bcd.save(path)?;
+            }
+            #[cfg(windows)]
+            BcdStore::Live => {
+                bcdedit::set_default(guid)?;
+                self.reload()?;
+            }
+            #[cfg(test)]
+            BcdStore::Memory => self.bcd.set_default(guid)?,
+        }
+        Ok(())
+    }
+
+    /// Arms `guid` for the next boot only.
+    fn set_boot_sequence(&mut self, guid: &str) -> Result<()> {
+        match &self.store {
+            BcdStore::File(path) => {
+                self.bcd.set_boot_sequence(guid)?;
+                self.bcd.save(path)?;
+            }
+            #[cfg(windows)]
+            BcdStore::Live => {
+                bcdedit::set_boot_sequence(guid)?;
+                self.reload()?;
+            }
+            #[cfg(test)]
+            BcdStore::Memory => self.bcd.set_boot_sequence(guid)?,
+        }
+        Ok(())
+    }
+
+    /// Drops any one-shot selection (idempotent).
+    fn clear_boot_sequence(&mut self) -> Result<()> {
+        match &self.store {
+            BcdStore::File(path) => {
+                self.bcd.clear_boot_sequence()?;
+                self.bcd.save(path)?;
+            }
+            #[cfg(windows)]
+            BcdStore::Live => {
+                bcdedit::clear_boot_sequence(!self.bcd.boot_sequence().is_empty())?;
+                self.reload()?;
+            }
+            #[cfg(test)]
+            BcdStore::Memory => self.bcd.clear_boot_sequence()?,
+        }
+        Ok(())
+    }
+
+    /// Re-reads the live store after `bcdedit` changed it.
+    #[cfg(windows)]
+    fn reload(&mut self) -> Result<()> {
+        self.bcd = bcdedit::export()?;
+        Ok(())
+    }
 }
 
 /// Errors from a switch operation.
@@ -82,7 +168,8 @@ pub enum Error {
     Io(std::io::Error),
     /// No entry matched the given selector.
     NotFound(String),
-    /// Privileged helper invocation failed.
+    /// The action needed privileges this process could not obtain, or the
+    /// privileged step itself failed.
     Elevation(String),
 }
 
@@ -93,7 +180,7 @@ impl std::fmt::Display for Error {
             Error::Bcd(e) => write!(f, "BCD error: {e}"),
             Error::Io(e) => write!(f, "I/O error: {e}"),
             Error::NotFound(s) => write!(f, "no entry matches '{s}'"),
-            Error::Elevation(m) => write!(f, "privileged helper failed: {m}"),
+            Error::Elevation(m) => write!(f, "{m}"),
         }
     }
 }
@@ -221,14 +308,13 @@ impl<N: Nvram> Switcher<N> {
                 match scope {
                     Scope::Default => {
                         self.efi.set_default(*efi_id)?;
-                        slot.bcd.set_default(guid)?;
+                        slot.set_default(guid)?;
                     }
                     Scope::Once => {
                         self.efi.set_boot_next(*efi_id)?;
-                        slot.bcd.set_boot_sequence(guid)?;
+                        slot.set_boot_sequence(guid)?;
                     }
                 }
-                persist(slot)?;
             }
         }
         Ok(())
@@ -238,18 +324,10 @@ impl<N: Nvram> Switcher<N> {
     pub fn clear_next(&mut self) -> Result<()> {
         self.efi.clear_boot_next()?;
         if let Some(slot) = self.bcd.as_mut() {
-            slot.bcd.clear_boot_sequence()?;
-            persist(slot)?;
+            slot.clear_boot_sequence()?;
         }
         Ok(())
     }
-}
-
-fn persist(slot: &mut BcdSlot) -> Result<()> {
-    if let Some(path) = &slot.path {
-        slot.bcd.save(path)?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -352,7 +430,7 @@ mod tests {
         let slot = BcdSlot {
             efi_id: 0x0000,
             bcd: synthetic_bcd(),
-            path: None,
+            store: BcdStore::Memory,
         };
         Switcher::assemble(efi, Some(slot))
     }

@@ -1,12 +1,12 @@
 //! System constructor: builds a [`Switcher`] from the running firmware and,
 //! when found, the machine's BCD store.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use os_switcher_bcd::Bcd;
 use os_switcher_efi::{Efi, OsKind, SystemNvram};
 
-use crate::{BcdSlot, Switcher};
+use crate::{BcdSlot, BcdStore, Switcher};
 
 impl Switcher<SystemNvram> {
     /// Builds a switcher from the running system: reads the UEFI variables and,
@@ -24,16 +24,9 @@ impl Switcher<SystemNvram> {
             .map(|e| e.id)
             .collect();
 
-        let bcd = if let [efi_id] = windows[..] {
-            find_bcd_path().and_then(|path| {
-                Bcd::from_file(&path).ok().map(|bcd| BcdSlot {
-                    efi_id,
-                    bcd,
-                    path: Some(path),
-                })
-            })
-        } else {
-            None
+        let bcd = match windows[..] {
+            [efi_id] => system_bcd().map(|(bcd, store)| BcdSlot { efi_id, bcd, store }),
+            _ => None,
         };
 
         Switcher::assemble(efi, bcd)
@@ -52,7 +45,7 @@ impl Switcher<SystemNvram> {
             Some(efi_id) => Some(BcdSlot {
                 efi_id,
                 bcd: Bcd::from_file(bcd_path.as_ref())?,
-                path: Some(bcd_path.as_ref().to_path_buf()),
+                store: BcdStore::File(bcd_path.as_ref().to_path_buf()),
             }),
             None => None,
         };
@@ -60,9 +53,31 @@ impl Switcher<SystemNvram> {
     }
 }
 
+/// Loads the machine's BCD store, the way this platform reaches it.
+///
+/// From a running Windows the store is held open by the kernel, so it is read
+/// (and later written) through `bcdedit`. From Linux the ESP is just a mounted
+/// filesystem and the hive is edited in place.
+fn system_bcd() -> Option<(Bcd, BcdStore)> {
+    #[cfg(windows)]
+    {
+        crate::bcdedit::export().ok().map(|b| (b, BcdStore::Live))
+    }
+    #[cfg(not(windows))]
+    {
+        let path = find_bcd_path()?;
+        let bcd = Bcd::from_file(&path).ok()?;
+        Some((bcd, BcdStore::File(path)))
+    }
+}
+
 /// Locates the BCD hive on a mounted ESP.
-fn find_bcd_path() -> Option<PathBuf> {
+#[cfg(not(windows))]
+fn find_bcd_path() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+
     // Well-known mount points first, then anything in /proc/mounts.
+    #[allow(unused_mut)]
     let mut candidates: Vec<PathBuf> = ["/boot/efi", "/boot", "/efi"]
         .iter()
         .map(PathBuf::from)

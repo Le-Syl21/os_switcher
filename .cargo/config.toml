@@ -1,0 +1,8 @@
+# Link the Microsoft C runtime into the executable instead of against
+# vcruntime140.dll / msvcp140.dll. os-switcher is a single file people download
+# and double-click: it must not depend on a redistributable being installed.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

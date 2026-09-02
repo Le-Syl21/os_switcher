@@ -1,5 +1,6 @@
 //! Reboot and shutdown, delegated to the platform's standard tools.
 
+use crate::sys::quiet_command;
 use crate::Result;
 
 /// Reboots the machine.
@@ -23,7 +24,7 @@ fn run_power(action: PowerAction) -> Result<()> {
         PowerAction::Reboot => "reboot",
         PowerAction::Shutdown => "poweroff",
     };
-    std::process::Command::new("systemctl").arg(arg).status()?;
+    quiet_command("systemctl").arg(arg).status()?;
     Ok(())
 }
 
@@ -33,9 +34,7 @@ fn run_power(action: PowerAction) -> Result<()> {
         PowerAction::Reboot => "/r",
         PowerAction::Shutdown => "/s",
     };
-    std::process::Command::new("shutdown")
-        .args([flag, "/t", "0"])
-        .status()?;
+    quiet_command("shutdown").args([flag, "/t", "0"]).status()?;
     Ok(())
 }
 

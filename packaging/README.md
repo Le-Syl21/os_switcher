@@ -1,16 +1,14 @@
-# Packaging & installation (Linux)
+# Packaging & installation
 
-Two binaries and one polkit rule.
+## Linux
+
+One binary and one polkit rule.
 
 ```sh
-# Build in release
 cargo build --release
 
-# Unprivileged app + CLI
-install -Dm755 target/release/os-switcher        /usr/bin/os-switcher
-
-# Privileged helper (invoked via pkexec)
-install -Dm755 target/release/os-switcher-helper /usr/libexec/os-switcher-helper
+# The program: CLI, GUI, and — through pkexec — its own privileged half.
+install -Dm755 target/release/os-switcher /usr/bin/os-switcher
 
 # polkit rule: no prompt on the active local session, admin auth otherwise
 install -Dm644 packaging/org.le-syl21.os-switcher.policy \
@@ -20,13 +18,33 @@ install -Dm644 packaging/org.le-syl21.os-switcher.policy \
 install -Dm644 packaging/os-switcher.desktop /usr/share/applications/os-switcher.desktop
 ```
 
-The polkit action's `exec.path` points at `/usr/libexec/os-switcher-helper`, so
-install the helper there for the passwordless active-session rule to apply. In
-development, `run_helper_elevated` finds the helper next to the running binary
-(or via `$OS_SWITCHER_HELPER`) and `pkexec` falls back to an admin password.
+The policy's `exec.path` names `/usr/bin/os-switcher`, so the passwordless
+active-session rule only applies once the binary is installed there. Run from a
+build directory, `pkexec` falls back to asking for an admin password.
+
+`allow_active=yes` is what makes the app usable without typing a password every
+time you pick an OS. It does mean the user sitting at the machine can run
+`os-switcher` as root without authenticating — including `--bcd`, which reads
+and writes a hive at a path they choose. Drop that to `auth_admin_keep` if your
+threat model does not accept it.
 
 ## Windows
 
-The core, CLI and helper build on Windows; writes require an elevated process
-(run the helper from an elevated context). Automatic UAC elevation / a scheduled
-task is not wired up yet.
+Nothing to install: `os-switcher.exe` is self-contained, needs no Visual C++
+redistributable, and opens no console window when double-clicked.
+
+Elevation is asked for at launch, because reading the firmware variables
+already requires it. To be asked only once, tick *"Skip the approval prompt"*
+in the app, or:
+
+```powershell
+os-switcher elevation install   # one UAC prompt, then never again
+os-switcher elevation status
+os-switcher elevation remove
+```
+
+This registers a scheduled task ("OS Switcher") that runs with highest
+privileges; the app starts it with `schtasks /run`, which needs no consent. The
+task's action is fixed — the executable, with `--gui` — so it cannot be used to
+run anything else elevated. Move the executable and the app re-registers the
+task the next time it runs elevated.

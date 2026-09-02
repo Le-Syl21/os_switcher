@@ -7,9 +7,16 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+# One binary for both faces: run it with a subcommand and it behaves like a CLI,
+# run it with none (or double-click it) and it opens the GUI.
 [[bin]]
 name = "os-switcher"
 path = "src/main.rs"
+
+[features]
+# Lets the `egui-mcp` server attach to a running instance, to drive and
+# screenshot the UI. Development only.
+inspection = ["eframe/inspection"]
 
 [dependencies]
 os-switcher-core.workspace = true
@@ -17,3 +24,14 @@ clap = { version = "4", features = ["derive"] }
 eframe = "0.36"
 rust-i18n = "4"
 sys-locale = "0.3"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_UI_WindowsAndMessaging",
+] }

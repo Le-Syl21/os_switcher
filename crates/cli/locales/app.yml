@@ -5,48 +5,151 @@ app_title:
   fr: OS Switcher
   de: OS Switcher
   es: OS Switcher
-col_default:
-  en: Default OS
-  fr: OS par défaut
-  de: Standard-OS
-  es: SO predeterminado
-col_next:
+subtitle:
+  en: Choose which system starts next
+  fr: Choisissez le système qui démarrera
+  de: Wählen Sie das nächste Betriebssystem
+  es: Elija qué sistema arrancará
+
+current_default:
+  en: Default
+  fr: Par défaut
+  de: Standard
+  es: Predeterminado
+current_next:
   en: Next boot
   fr: Prochain démarrage
   de: Nächster Start
   es: Próximo arranque
-current_default:
-  en: "Default"
-  fr: "Par défaut"
-  de: "Standard"
-  es: "Predeterminado"
-current_next:
-  en: "Next boot"
-  fr: "Prochain démarrage"
-  de: "Nächster Start"
-  es: "Próximo arranque"
 next_none:
-  en: none (follows default)
-  fr: aucun (suit le défaut)
-  de: keiner (folgt Standard)
-  es: ninguno (sigue el predeterminado)
+  en: none — follows the default
+  fr: aucun — suit le défaut
+  de: keiner — folgt dem Standard
+  es: ninguno — sigue el predeterminado
+
+section_choose:
+  en: Start on
+  fr: Démarrer sur
+  de: Starten mit
+  es: Arrancar en
+section_default:
+  en: Default operating system
+  fr: Système par défaut
+  de: Standard-Betriebssystem
+  es: Sistema predeterminado
+
+badge_default:
+  en: default
+  fr: défaut
+  de: Standard
+  es: predet.
+badge_once:
+  en: once
+  fr: une fois
+  de: einmalig
+  es: una vez
+action_once:
+  en: Next boot
+  fr: Au prochain
+  de: Nächster Start
+  es: Próximo
+action_default:
+  en: Make default
+  fr: Par défaut
+  de: Als Standard
+  es: Predeterminar
+action_cancel_once:
+  en: Cancel
+  fr: Annuler
+  de: Abbrechen
+  es: Cancelar
+
 reboot:
-  en: Reboot
+  en: Restart
   fr: Redémarrer
   de: Neu starten
   es: Reiniciar
+reboot_into:
+  en: "Restart on %{name}"
+  fr: "Redémarrer sur %{name}"
+  de: "Neu starten mit %{name}"
+  es: "Reiniciar en %{name}"
 shutdown:
   en: Shut down
   fr: Éteindre
   de: Herunterfahren
   es: Apagar
+confirm_reboot_title:
+  en: Restart now?
+  fr: Redémarrer maintenant ?
+  de: Jetzt neu starten?
+  es: ¿Reiniciar ahora?
+confirm_reboot_body:
+  en: Unsaved work in other applications will be lost.
+  fr: Le travail non enregistré dans les autres applications sera perdu.
+  de: Nicht gespeicherte Arbeit in anderen Anwendungen geht verloren.
+  es: Se perderá el trabajo no guardado en otras aplicaciones.
+confirm_shutdown_title:
+  en: Shut down now?
+  fr: Éteindre maintenant ?
+  de: Jetzt herunterfahren?
+  es: ¿Apagar ahora?
+confirm_shutdown_body:
+  en: Unsaved work in other applications will be lost.
+  fr: Le travail non enregistré dans les autres applications sera perdu.
+  de: Nicht gespeicherte Arbeit in anderen Anwendungen geht verloren.
+  es: Se perderá el trabajo no guardado en otras aplicaciones.
+confirm_yes:
+  en: Confirm
+  fr: Confirmer
+  de: Bestätigen
+  es: Confirmar
+cancel:
+  en: Cancel
+  fr: Annuler
+  de: Abbrechen
+  es: Cancelar
+
 language:
-  en: "Language"
-  fr: "Langue"
-  de: "Sprache"
-  es: "Idioma"
+  en: Language
+  fr: Langue
+  de: Sprache
+  es: Idioma
+working:
+  en: Working…
+  fr: En cours…
+  de: Arbeitet…
+  es: Trabajando…
+
+empty_title:
+  en: No boot entries found
+  fr: Aucune entrée de démarrage trouvée
+  de: Keine Starteinträge gefunden
+  es: No se encontraron entradas de arranque
+empty_body:
+  en: This machine may not boot in UEFI mode, or the firmware variables are not readable.
+  fr: Cette machine ne démarre peut-être pas en mode UEFI, ou les variables du firmware ne sont pas lisibles.
+  de: Dieser Rechner startet möglicherweise nicht im UEFI-Modus, oder die Firmware-Variablen sind nicht lesbar.
+  es: Puede que este equipo no arranque en modo UEFI, o que las variables del firmware no sean legibles.
+
+no_prompt:
+  en: Skip the approval prompt
+  fr: Ne plus demander d'autorisation
+  de: Bestätigung überspringen
+  es: Omitir la solicitud de permiso
+no_prompt_hint:
+  en: Registers a scheduled task so os-switcher starts with the rights it needs, without asking again.
+  fr: Enregistre une tâche planifiée pour qu'os-switcher démarre avec les droits nécessaires, sans redemander.
+  de: Registriert eine geplante Aufgabe, damit os-switcher ohne erneute Nachfrage mit den nötigen Rechten startet.
+  es: Registra una tarea programada para que os-switcher arranque con los permisos necesarios, sin volver a preguntar.
 hint_privilege:
   en: Changing the boot OS asks for authorization.
   fr: Changer l'OS de démarrage demande une autorisation.
   de: Das Ändern des Boot-Betriebssystems erfordert eine Berechtigung.
   es: Cambiar el SO de arranque solicita autorización.
+
+elevation_refused:
+  en: "OS Switcher needs administrator rights: on Windows, even reading the firmware boot settings requires them. The launch was cancelled."
+  fr: "OS Switcher a besoin des droits administrateur : sous Windows, même lire la configuration de démarrage du firmware les exige. Le lancement a été annulé."
+  de: "OS Switcher benötigt Administratorrechte: unter Windows erfordert schon das Lesen der Firmware-Starteinstellungen sie. Der Start wurde abgebrochen."
+  es: "OS Switcher necesita permisos de administrador: en Windows, incluso leer la configuración de arranque del firmware los requiere. Se canceló el inicio."
