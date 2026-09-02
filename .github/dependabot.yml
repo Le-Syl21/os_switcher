@@ -1,0 +1,24 @@
+version: 2
+
+# Third-party actions are pinned by commit SHA: a version tag is mutable (in
+# March 2026, 76 of trivy-action's 77 tags were force-pushed to malicious
+# code), only a SHA is immutable. The trade-off is that pinned actions no
+# longer receive fixes on their own — that is Dependabot's job here: it bumps a
+# pinned SHA and keeps the `# vX.Y.Z` comment next to it in step.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    # One grouped PR rather than one per action.
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+    ignore:
+      # dtolnay/rust-toolchain has no "versions": the ref names the Rust
+      # toolchain to install, not a release of the action. Dependabot would
+      # read it as an action version and propose bumps to tags that do not
+      # exist; the toolchain to use lives in `with: toolchain:`, out of reach.
+      - dependency-name: dtolnay/rust-toolchain
