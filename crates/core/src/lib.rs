@@ -39,6 +39,8 @@ mod bcdedit;
 #[cfg(windows)]
 pub mod task;
 
+pub mod shortcut;
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod detect;
 

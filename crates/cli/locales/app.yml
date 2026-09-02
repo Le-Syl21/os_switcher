@@ -153,3 +153,29 @@ elevation_refused:
   fr: "OS Switcher a besoin des droits administrateur : sous Windows, même lire la configuration de démarrage du firmware les exige. Le lancement a été annulé."
   de: "OS Switcher benötigt Administratorrechte: unter Windows erfordert schon das Lesen der Firmware-Starteinstellungen sie. Der Start wurde abgebrochen."
   es: "OS Switcher necesita permisos de administrador: en Windows, incluso leer la configuración de arranque del firmware los requiere. Se canceló el inicio."
+
+menu_add_start:
+  en: Start menu
+  fr: Menu Démarrer
+  de: Startmenü
+  es: Menú Inicio
+menu_add_launcher:
+  en: Launcher
+  fr: Lanceur
+  de: Startprogramm
+  es: Lanzador
+menu_add_hint_start:
+  en: Add OS Switcher to the Start menu. From there, right-click it to pin it to the taskbar — Windows does not allow an application to do that itself.
+  fr: Ajoute OS Switcher au menu Démarrer. De là, un clic droit permet de l'épingler à la barre des tâches — Windows n'autorise pas une application à le faire elle-même.
+  de: Fügt OS Switcher zum Startmenü hinzu. Von dort lässt es sich per Rechtsklick an die Taskleiste anheften — Windows erlaubt einer Anwendung nicht, das selbst zu tun.
+  es: Añade OS Switcher al menú Inicio. Desde allí, con el botón derecho puedes anclarlo a la barra de tareas — Windows no permite que una aplicación lo haga por sí misma.
+menu_add_hint_launcher:
+  en: Add OS Switcher to the application menu, for this user only.
+  fr: Ajoute OS Switcher au menu des applications, pour cet utilisateur seulement.
+  de: Fügt OS Switcher nur für diesen Benutzer zum Anwendungsmenü hinzu.
+  es: Añade OS Switcher al menú de aplicaciones, solo para este usuario.
+menu_remove_hint:
+  en: Remove the entry.
+  fr: Retirer l'entrée.
+  de: Eintrag entfernen.
+  es: Quitar la entrada.

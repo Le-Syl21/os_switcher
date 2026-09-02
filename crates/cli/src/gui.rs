@@ -176,6 +176,8 @@ struct SwitcherApp {
     confirm: Option<Power>,
     /// Whether the boot configuration has been read at least once.
     loaded: bool,
+    /// Whether the desktop application menu has an entry for this app.
+    in_menu: bool,
     /// Windows: whether launches skip the approval prompt.
     #[cfg(windows)]
     no_prompt: bool,
@@ -191,6 +193,7 @@ impl SwitcherApp {
             job: None,
             confirm: None,
             loaded: false,
+            in_menu: os_switcher_core::shortcut::is_present(),
             #[cfg(windows)]
             no_prompt: os_switcher_core::task::is_installed(),
         }
@@ -276,8 +279,45 @@ impl SwitcherApp {
                 if self.busy() {
                     ui.add(egui::Spinner::new().size(18.0));
                 }
+                self.menu_entry_toggle(ui);
             });
         });
+    }
+
+    /// Registers the app in the desktop's application menu, so it can be found
+    /// by name — and, from there, pinned wherever the user keeps things.
+    fn menu_entry_toggle(&mut self, ui: &mut egui::Ui) {
+        use os_switcher_core::shortcut;
+
+        let (label, add_hint) = if cfg!(windows) {
+            (t!("menu_add_start"), t!("menu_add_hint_start"))
+        } else {
+            (t!("menu_add_launcher"), t!("menu_add_hint_launcher"))
+        };
+        let hint = if self.in_menu {
+            t!("menu_remove_hint")
+        } else {
+            add_hint
+        };
+
+        if ui
+            .selectable_label(self.in_menu, RichText::new(label).small())
+            .on_hover_text(hint)
+            .clicked()
+        {
+            let outcome = if self.in_menu {
+                shortcut::remove()
+            } else {
+                shortcut::add()
+            };
+            match outcome {
+                Ok(()) => {
+                    self.in_menu = !self.in_menu;
+                    self.status = None;
+                }
+                Err(e) => self.status = Some((e.to_string(), true)),
+            }
+        }
     }
 
     /// The one-line answer to "what happens when I press the power button?".
