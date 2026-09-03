@@ -87,7 +87,15 @@ impl OsKind {
             "ubuntu", "debian", "fedora", "grub", "shim", "systemd", "linux", "rhel", "suse",
             "arch",
         ];
-        const MAC: &[&str] = &["boot.efi", "system/library/coreservices", "apple"];
+        // A Hackintosh boots macOS through OpenCore or Clover, each a UEFI
+        // loader on the ESP; the entry usually names the loader, not "macOS".
+        const MAC: &[&str] = &[
+            "boot.efi",
+            "system/library/coreservices",
+            "apple",
+            "opencore",
+            "clover",
+        ];
         if WIN.iter().any(|k| hay.contains(k)) {
             OsKind::Windows
         } else if MAC.iter().any(|k| hay.contains(k)) {
@@ -97,5 +105,33 @@ impl OsKind {
         } else {
             OsKind::Other
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OsKind;
+
+    #[test]
+    fn guesses_the_os_from_description_or_path() {
+        assert_eq!(
+            OsKind::guess("Windows Boot Manager", r"\EFI\Microsoft\Boot\bootmgfw.efi"),
+            OsKind::Windows
+        );
+        assert_eq!(
+            OsKind::guess("ubuntu", r"\EFI\ubuntu\shimx64.efi"),
+            OsKind::Linux
+        );
+        // A Hackintosh boots macOS through OpenCore or Clover; the entry names
+        // the loader, so those keywords have to map to macOS, not "Other".
+        assert_eq!(
+            OsKind::guess("OpenCore", r"\EFI\OC\OpenCore.efi"),
+            OsKind::MacOs
+        );
+        assert_eq!(
+            OsKind::guess("UEFI OS", r"\EFI\CLOVER\CLOVERX64.efi"),
+            OsKind::MacOs
+        );
+        assert_eq!(OsKind::guess("PXE Network Boot", ""), OsKind::Other);
     }
 }
