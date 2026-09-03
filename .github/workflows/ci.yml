@@ -59,11 +59,19 @@ jobs:
       - name: Format
         run: cargo fmt --check
 
-      - name: Clippy (strict)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      # Lint and test both faces: the default build is the CLI (no GUI stack),
+      # `--features gui` adds the eframe/egui binary.
+      - name: Clippy (CLI)
+        run: cargo clippy --all-targets -- -D warnings
 
-      - name: Tests
-        run: cargo test --workspace
+      - name: Clippy (GUI)
+        run: cargo clippy --all-targets --features gui -- -D warnings
+
+      - name: Tests (CLI)
+        run: cargo test
+
+      - name: Tests (GUI)
+        run: cargo test --features gui
 
   build:
     needs: check
@@ -95,33 +103,48 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libwayland-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev
 
-      - name: Build
-        run: cargo build --release -p os-switcher
+      # Two binaries of different weight: the small CLI (default build, no GUI
+      # stack) and the GUI (behind the `gui` feature).
+      - name: Build CLI
+        run: cargo build --release --bin os-switcher
+
+      - name: Build GUI
+        run: cargo build --release --bin os-switcher-gui --features gui
 
       - name: Package (Linux)
         if: matrix.kind == 'linux'
         run: |
-          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.label }}"
-          mkdir -p "$name"
-          cp target/release/os-switcher "$name/"
-          cp -r packaging README.md "$name/"
-          tar -czf "$name.tar.gz" "$name"
+          for variant in os-switcher os-switcher-gui; do
+            name="${variant}-${GITHUB_REF_NAME}-${{ matrix.label }}"
+            mkdir -p "$name"
+            cp "target/release/${variant}" "$name/"
+            cp -r packaging README.md "$name/"
+            tar -czf "$name.tar.gz" "$name"
+          done
 
       - name: Package (Windows)
         if: matrix.kind == 'windows'
         shell: pwsh
         run: |
-          $name = "os-switcher-$env:GITHUB_REF_NAME-${{ matrix.label }}"
-          New-Item -ItemType Directory -Force -Path $name | Out-Null
-          Copy-Item target/release/os-switcher.exe $name/
-          Copy-Item README.md $name/
-          Compress-Archive -Path $name -DestinationPath "$name.zip"
+          foreach ($variant in "os-switcher", "os-switcher-gui") {
+            $name = "$variant-$env:GITHUB_REF_NAME-${{ matrix.label }}"
+            New-Item -ItemType Directory -Force -Path $name | Out-Null
+            Copy-Item "target/release/$variant.exe" $name/
+            Copy-Item README.md $name/
+            Compress-Archive -Path $name -DestinationPath "$name.zip"
+          }
 
-      - name: Upload archive artifact
+      - name: Upload CLI archive
         uses: actions/upload-artifact@v7
         with:
           name: os-switcher-${{ github.ref_name }}-${{ matrix.label }}
           path: os-switcher-${{ github.ref_name }}-${{ matrix.label }}.*
+
+      - name: Upload GUI archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: os-switcher-gui-${{ github.ref_name }}-${{ matrix.label }}
+          path: os-switcher-gui-${{ github.ref_name }}-${{ matrix.label }}.*
 
   # Authenticode-sign the Windows binaries with ssign — the Linux runner signs
   # them via Certum (no Windows, no vendor stack). Behind the `signing`
@@ -134,8 +157,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: signing
     strategy:
+      # One job per (architecture × binary): both the CLI and the GUI exe are
+      # Authenticode-signed.
       matrix:
         label: [windows-x86_64, windows-aarch64]
+        variant: [os-switcher, os-switcher-gui]
     steps:
       - name: Install ssign (prebuilt binary from the latest release)
         run: |
@@ -145,27 +171,28 @@ jobs:
       - name: Download the archive
         uses: actions/download-artifact@v8
         with:
-          name: os-switcher-${{ github.ref_name }}-${{ matrix.label }}
+          name: ${{ matrix.variant }}-${{ github.ref_name }}-${{ matrix.label }}
           path: dl
 
-      - name: Sign os-switcher.exe with ssign (via Certum)
+      - name: Sign ${{ matrix.variant }}.exe with ssign (via Certum)
         env:
           CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
           CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
         run: |
           cd dl
-          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.label }}"
+          name="${{ matrix.variant }}-${GITHUB_REF_NAME}-${{ matrix.label }}"
+          exe="$name/${{ matrix.variant }}.exe"
           unzip -o "$name.zip"
           ssign --verbose \
             -n "os-switcher" -u "https://github.com/${{ github.repository }}" \
-            "$name/os-switcher.exe"
+            "$exe"
 
           sudo apt-get update -qq && sudo apt-get install -y osslsigncode
           # Check the facts, not the presence of a sentence: a mismatched digest
           # and an untimestamped signature both print reassuring lines, yet
           # Windows rejects the first and treats the second as expired the day
           # the certificate does.
-          out=$(osslsigncode verify "$name/os-switcher.exe" 2>&1) || true
+          out=$(osslsigncode verify "$exe" 2>&1) || true
           echo "$out"
           echo "$out" | grep -q "MISMATCH" && { echo "::error::invalid Authenticode digest"; exit 1; }
           echo "$out" | grep -q "Timestamp is not available" && { echo "::error::signature is not timestamped"; exit 1; }
@@ -177,8 +204,8 @@ jobs:
       - name: Re-upload the signed archive
         uses: actions/upload-artifact@v7
         with:
-          name: os-switcher-${{ github.ref_name }}-${{ matrix.label }}
-          path: dl/os-switcher-${{ github.ref_name }}-${{ matrix.label }}.zip
+          name: ${{ matrix.variant }}-${{ github.ref_name }}-${{ matrix.label }}
+          path: dl/${{ matrix.variant }}-${{ github.ref_name }}-${{ matrix.label }}.zip
           overwrite: true
 
   release:
