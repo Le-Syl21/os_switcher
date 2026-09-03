@@ -8,12 +8,12 @@
 //! arm or clear a one-shot next boot.
 //!
 //! ```no_run
-//! use os_switcher_bcd::Bcd;
+//! use os_switcher::bcd::Bcd;
 //! let mut bcd = Bcd::from_file("/boot/efi/EFI/Microsoft/Boot/BCD")?;
 //! for e in bcd.entries() {
 //!     println!("{} {}", if Some(&e.id) == bcd.default().as_ref() { "*" } else { " " }, e.description);
 //! }
-//! # Ok::<(), os_switcher_bcd::Error>(())
+//! # Ok::<(), os_switcher::bcd::Error>(())
 //! ```
 
 use regf_rs::{Hive, RegValue};

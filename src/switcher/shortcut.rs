@@ -13,7 +13,7 @@
 
 use std::path::PathBuf;
 
-use crate::{Error, Result};
+use crate::switcher::{Error, Result};
 
 /// The name the entry carries in the menu.
 const DISPLAY_NAME: &str = "OS Switcher";
@@ -89,7 +89,7 @@ fn write_entry(path: &std::path::Path, exe: &std::path::Path) -> Result<()> {
         dir = quote(exe.parent().unwrap_or(exe)),
     );
 
-    let output = crate::sys::quiet_command("powershell")
+    let output = crate::switcher::sys::quiet_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()?;
     if output.status.success() {
@@ -97,7 +97,7 @@ fn write_entry(path: &std::path::Path, exe: &std::path::Path) -> Result<()> {
     } else {
         Err(Error::Io(std::io::Error::other(format!(
             "could not create the Start menu entry: {}",
-            crate::sys::decode_output(&output.stderr)
+            crate::switcher::sys::decode_output(&output.stderr)
         ))))
     }
 }

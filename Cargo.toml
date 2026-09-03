@@ -1,15 +1,71 @@
-[workspace]
-resolver = "2"
-members = ["crates/*"]
-
-[workspace.package]
+[package]
+name = "os-switcher"
+version = "0.1.2"
+description = "Choose the next-boot or default OS on a UEFI multiboot machine (Windows/Linux), UEFI + BCD aware."
 edition = "2021"
 license = "GPL-3.0-or-later"
 authors = ["Le-Syl21"]
 repository = "https://github.com/Le-Syl21/os_switcher"
+readme = "README.md"
 
-[workspace.dependencies]
+[lib]
+name = "os_switcher"
+path = "src/lib.rs"
+
+# Two faces, two binaries of different weight: the CLI is small and pulls no GUI
+# stack, while `os-switcher-gui` (behind the `gui` feature) links eframe/egui.
+[[bin]]
+name = "os-switcher"
+path = "src/bin/os-switcher.rs"
+
+[[bin]]
+name = "os-switcher-gui"
+path = "src/bin/os-switcher-gui.rs"
+required-features = ["gui"]
+
+[features]
+default = []
+gui = ["dep:eframe", "dep:egui"]
+# Lets the `egui-mcp` server attach to a running instance, to drive and
+# screenshot the UI. Development only.
+inspection = ["gui", "eframe/inspection"]
+
+[dependencies]
 regf-rs = "0.1"
-os-switcher-efi = { path = "crates/efi" }
-os-switcher-bcd = { path = "crates/bcd" }
-os-switcher-core = { path = "crates/core" }
+clap = { version = "4", features = ["derive"] }
+rust-i18n = "4"
+sys-locale = "0.3"
+egui = { version = "0.36", optional = true }
+# Mirror exiftool-rs: render with glow (OpenGL), not wgpu — eframe 0.35+ made
+# wgpu the default and its D3D12 backend fails to build on Windows.
+eframe = { version = "0.36", optional = true, default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "wayland",
+    "web_screen_reader",
+    "x11",
+] }
+
+# efivar is the real NVRAM backend; it only builds on Linux and Windows. The
+# core logic is backend-agnostic and testable without it.
+[target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
+efivar = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

@@ -12,8 +12,8 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
+use crate::switcher::{is_elevated, reboot, run_self_elevated, shutdown, Entry, OsKind, Switcher};
 use eframe::egui::{self, Align, Color32, CornerRadius, Layout, Margin, RichText, Stroke, Vec2};
-use os_switcher_core::{is_elevated, reboot, run_self_elevated, shutdown, Entry, OsKind, Switcher};
 use rust_i18n::t;
 
 /// The languages offered in the footer.
@@ -24,8 +24,83 @@ const LANGS: &[(&str, &str)] = &[
     ("es", "Español"),
 ];
 
-/// Launches the GUI. `bcd` optionally overrides the BCD hive path.
-pub fn run(bcd: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+/// Entry point of the `os-switcher-gui` binary.
+///
+/// When it is handed a subcommand — chiefly when a worker re-runs it elevated
+/// to apply a change — it acts as the CLI and exits. Otherwise it opens the
+/// window, first securing the privileges the UI needs to even read the boot
+/// configuration on Windows.
+pub fn run() -> std::process::ExitCode {
+    use std::process::ExitCode;
+
+    // Window-subsystem process: adopt the launching terminal's console, if any,
+    // so a subcommand's output and any error are visible when run from one.
+    #[cfg(windows)]
+    let _ = crate::console::attach_parent();
+
+    let cli = crate::cli::parse_args();
+
+    // A subcommand means "do this and quit", not "open a window".
+    if cli.command.is_some() {
+        return crate::cli::execute(&cli);
+    }
+    let bcd = cli.bcd;
+
+    // On Windows the UI cannot even *list* the entries without an elevated
+    // token, so secure it before showing a window: the registered task first
+    // (no prompt at all), UAC otherwise.
+    #[cfg(windows)]
+    {
+        if !is_elevated() {
+            if crate::switcher::task::launch() {
+                return ExitCode::SUCCESS;
+            }
+            let args: Vec<std::ffi::OsString> = match &bcd {
+                Some(path) => vec!["--bcd".into(), path.clone().into_os_string()],
+                None => Vec::new(),
+            };
+            return match crate::switcher::relaunch_self_elevated(&args) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    // Double-clicked, there is no console and no window yet:
+                    // a message box is the only way to say why nothing opened.
+                    crate::console::alert(&format!("{}: {e}", t!("elevation_refused")));
+                    ExitCode::FAILURE
+                }
+            };
+        }
+
+        // Elevated at last. If the prompt-free task points at a copy of this
+        // binary that has since moved, re-register it now, while we still hold
+        // the rights to do so.
+        {
+            use crate::switcher::task;
+            if task::is_installed() && !task::is_current() {
+                let _ = task::install();
+            }
+        }
+    }
+
+    match launch(bcd) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            report_launch_error(&e.to_string());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Reports a failure to open the window: a message box on Windows (no console),
+/// stderr elsewhere.
+fn report_launch_error(message: &str) {
+    #[cfg(windows)]
+    crate::console::alert(&format!("error: {message}"));
+    #[cfg(not(windows))]
+    eprintln!("error: {message}");
+}
+
+/// Opens the window. `bcd` optionally overrides the BCD hive path.
+fn launch(bcd: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let locale = detect_locale();
 
     let options = eframe::NativeOptions {
@@ -120,12 +195,8 @@ fn perform(bcd: &Option<PathBuf>, job: Job) -> JobResult {
 }
 
 /// Performs one action directly, with the privileges this process already has.
-fn apply(
-    bcd: &Option<PathBuf>,
-    verb: &str,
-    selector: Option<&str>,
-) -> os_switcher_core::Result<()> {
-    use os_switcher_core::Scope;
+fn apply(bcd: &Option<PathBuf>, verb: &str, selector: Option<&str>) -> crate::switcher::Result<()> {
+    use crate::switcher::Scope;
 
     let mut switcher = open(bcd)?;
     match (verb, selector) {
@@ -135,9 +206,7 @@ fn apply(
     }
 }
 
-fn open(
-    bcd: &Option<PathBuf>,
-) -> os_switcher_core::Result<Switcher<os_switcher_core::SystemNvram>> {
+fn open(bcd: &Option<PathBuf>) -> crate::switcher::Result<Switcher<crate::switcher::SystemNvram>> {
     match bcd {
         Some(path) => Switcher::detect_with_bcd(path),
         None => Ok(Switcher::detect()),
@@ -193,9 +262,9 @@ impl SwitcherApp {
             job: None,
             confirm: None,
             loaded: false,
-            in_menu: os_switcher_core::shortcut::is_present(),
+            in_menu: crate::switcher::shortcut::is_present(),
             #[cfg(windows)]
-            no_prompt: os_switcher_core::task::is_installed(),
+            no_prompt: crate::switcher::task::is_installed(),
         }
     }
 
@@ -287,7 +356,7 @@ impl SwitcherApp {
     /// Registers the app in the desktop's application menu, so it can be found
     /// by name — and, from there, pinned wherever the user keeps things.
     fn menu_entry_toggle(&mut self, ui: &mut egui::Ui) {
-        use os_switcher_core::shortcut;
+        use crate::switcher::shortcut;
 
         let (label, add_hint) = if cfg!(windows) {
             (t!("menu_add_start"), t!("menu_add_hint_start"))
@@ -459,7 +528,7 @@ impl SwitcherApp {
     /// the elevation, so later launches start straight into the app.
     #[cfg(windows)]
     fn no_prompt_toggle(&mut self, ui: &mut egui::Ui) {
-        use os_switcher_core::task;
+        use crate::switcher::task;
 
         let mut wanted = self.no_prompt;
         let response = ui

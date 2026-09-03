@@ -1,41 +1,19 @@
-//! `os-switcher` — one binary, two faces.
+//! The command-line face of os-switcher.
 //!
-//! With a subcommand it behaves like a CLI; with none (or when double-clicked)
-//! it opens the GUI. On Windows it is linked for the *windows* subsystem so no
-//! console window appears, and re-attaches to the launching terminal's console
-//! when there is one — see [`console`].
+//! With a subcommand it lists, shows, or changes the boot selection; with none
+//! it prints the help. The graphical face lives in the separate `os-switcher-gui`
+//! binary.
 //!
 //! Privileges: changing the boot OS needs root (Linux) or an elevated token
 //! (Windows, where even *reading* the firmware variables does). The binary
 //! re-runs itself elevated when needed, so there is no separate helper.
 
-#![cfg_attr(windows, windows_subsystem = "windows")]
-
-#[cfg(windows)]
-mod console;
-mod gui;
-
-/// The application mark, drawn in code.
-///
-/// Used twice from one definition: as the window and taskbar icon at run time,
-/// and — through `build.rs`, which `include!`s the file — as the `.ico`
-/// resource compiled into the executable, so it has a real icon in Explorer.
-/// Keeping it code means no binary asset in the repository and no chance of
-/// the two drifting apart; it depends on nothing but `std`.
-///
-/// The glyph is the universal power symbol: a ring broken at the top, closed
-/// by a stem. Every measurement is a fraction of the requested size, so one
-/// drawing serves 16 px to 256 px, supersampled so the curves stay smooth.
-mod icon;
-
-rust_i18n::i18n!("locales");
-
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use crate::switcher::{is_elevated, reboot, run_self_elevated, shutdown, Scope, Switcher};
 use clap::{Parser, Subcommand};
-use os_switcher_core::{is_elevated, reboot, run_self_elevated, shutdown, Scope, Switcher};
 
 #[derive(Parser)]
 #[command(
@@ -43,14 +21,10 @@ use os_switcher_core::{is_elevated, reboot, run_self_elevated, shutdown, Scope, 
     about = "Pick the next-boot or default OS on a UEFI multiboot machine",
     version
 )]
-struct Cli {
+pub(crate) struct Cli {
     /// Explicit path to the BCD hive (when the ESP is not auto-detected).
     #[arg(long, value_name = "PATH", global = true)]
-    bcd: Option<PathBuf>,
-
-    /// Open the graphical interface (the default with no subcommand).
-    #[arg(long, global = true)]
-    gui: bool,
+    pub(crate) bcd: Option<PathBuf>,
 
     /// Internal: write this run's output here instead of the console, so the
     /// unprivileged parent that elevated us can print it.
@@ -58,11 +32,11 @@ struct Cli {
     relay: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Option<Command>,
+    pub(crate) command: Option<Command>,
 }
 
 #[derive(Subcommand, Clone)]
-enum Command {
+pub(crate) enum Command {
     /// List the bootable entries.
     List,
     /// Show the current default and one-shot selections.
@@ -103,72 +77,37 @@ enum ElevationAction {
     Status,
 }
 
-fn main() -> ExitCode {
-    // Before clap: `--help` and every message below need somewhere to go.
-    #[cfg(windows)]
-    let on_console = console::attach_parent();
+/// Entry point of the `os-switcher` binary.
+pub fn run() -> ExitCode {
+    let cli = parse_args();
 
-    let cli = Cli::parse();
-    rust_i18n::set_locale(gui::detect_locale());
-
-    // The GUI owns the process from here; it reports its own errors.
-    if cli.gui || cli.command.is_none() {
-        // On Windows the UI cannot even *list* the entries without an elevated
-        // token, so hand the whole session over rather than show an empty
-        // window: the registered task first (no prompt at all), UAC otherwise.
-        #[cfg(windows)]
-        if !is_elevated() {
-            if os_switcher_core::task::launch() {
-                return ExitCode::SUCCESS;
-            }
-            return match os_switcher_core::relaunch_self_elevated(&["--gui"]) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(e) => {
-                    emit(&cli, &format!("error: {e}"), true);
-                    // Double-clicked, there is no console and no window yet:
-                    // say why nothing opened instead of vanishing.
-                    if !on_console {
-                        console::alert(&rust_i18n::t!("elevation_refused"));
-                    }
-                    ExitCode::FAILURE
-                }
-            };
-        }
-
-        // Elevated at last. If the prompt-free task points at a copy of this
-        // binary that has since moved, re-register it now, while we still hold
-        // the rights to do so.
-        #[cfg(windows)]
-        {
-            use os_switcher_core::task;
-            if task::is_installed() && !task::is_current() {
-                let _ = task::install();
-            }
-        }
-
-        return match gui::run(cli.bcd.clone()) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                emit(&cli, &format!("error: {e}"), true);
-                ExitCode::FAILURE
-            }
-        };
-    }
-
-    // A console-less binary attached to a live prompt: start on a fresh line,
-    // the shell has already printed the next prompt.
-    #[cfg(windows)]
-    if on_console && cli.relay.is_none() {
+    // No subcommand: this is the CLI, so print the help rather than doing
+    // anything. The graphical face is the separate `os-switcher-gui` binary.
+    if cli.command.is_none() {
+        use clap::CommandFactory;
+        let _ = Cli::command().print_help();
         println!();
+        return ExitCode::SUCCESS;
     }
 
-    match run(&cli) {
+    execute(&cli)
+}
+
+/// Parses the command line. Shared with the GUI binary, which re-runs itself
+/// elevated with a subcommand and then dispatches it here.
+pub(crate) fn parse_args() -> Cli {
+    Cli::parse()
+}
+
+/// Runs the (already parsed) subcommand and prints or relays its output.
+pub(crate) fn execute(cli: &Cli) -> ExitCode {
+    match dispatch(cli) {
         Ok(text) => {
-            emit(&cli, &text, false);
+            emit(cli, &text, false);
             ExitCode::SUCCESS
         }
         Err(e) => {
-            emit(&cli, &format!("error: {e}"), true);
+            emit(cli, &format!("error: {e}"), true);
             ExitCode::FAILURE
         }
     }
@@ -190,7 +129,7 @@ fn emit(cli: &Cli, text: &str, is_error: bool) {
 }
 
 /// Runs one subcommand and returns what should be shown.
-fn run(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
+fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
     let command = cli.command.clone().expect("checked by the caller");
 
     // Power commands need no boot configuration — and no elevation.
@@ -307,7 +246,7 @@ fn escalate(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
 /// `os-switcher elevation …` — the permanent-authorization task.
 #[cfg(windows)]
 fn elevation(action: &ElevationAction) -> Result<String, Box<dyn std::error::Error>> {
-    use os_switcher_core::task;
+    use crate::switcher::task;
     Ok(match action {
         ElevationAction::Install => {
             task::install()?;
@@ -329,7 +268,7 @@ fn elevation(action: &ElevationAction) -> Result<String, Box<dyn std::error::Err
     })
 }
 
-fn list<N: os_switcher_core::Nvram>(switcher: &Switcher<N>) -> String {
+fn list<N: crate::switcher::Nvram>(switcher: &Switcher<N>) -> String {
     let entries = switcher.entries();
     if entries.is_empty() {
         return "no boot entries found (is this a UEFI system?)".to_string();
@@ -352,7 +291,7 @@ fn list<N: os_switcher_core::Nvram>(switcher: &Switcher<N>) -> String {
     out
 }
 
-fn status<N: os_switcher_core::Nvram>(switcher: &Switcher<N>) -> String {
+fn status<N: crate::switcher::Nvram>(switcher: &Switcher<N>) -> String {
     let entries = switcher.entries();
     let default = entries.iter().find(|e| e.is_default);
     let next = entries.iter().find(|e| e.is_next);
@@ -364,8 +303,8 @@ fn status<N: os_switcher_core::Nvram>(switcher: &Switcher<N>) -> String {
     )
 }
 
-fn os_label(kind: os_switcher_core::OsKind) -> &'static str {
-    use os_switcher_core::OsKind::*;
+fn os_label(kind: crate::switcher::OsKind) -> &'static str {
+    use crate::switcher::OsKind::*;
     match kind {
         Windows => "Windows",
         Linux => "Linux",

@@ -17,10 +17,10 @@
 
 use std::path::PathBuf;
 
-use os_switcher_bcd::Bcd;
-use os_switcher_efi::Efi;
+use crate::bcd::Bcd;
+use crate::efi::Efi;
 
-pub use os_switcher_efi::{Nvram, OsKind, SystemNvram};
+pub use crate::efi::{Nvram, OsKind, SystemNvram};
 
 mod elevate;
 #[cfg(windows)]
@@ -165,8 +165,8 @@ impl BcdSlot {
 /// Errors from a switch operation.
 #[derive(Debug)]
 pub enum Error {
-    Efi(os_switcher_efi::Error),
-    Bcd(os_switcher_bcd::Error),
+    Efi(crate::efi::Error),
+    Bcd(crate::bcd::Error),
     Io(std::io::Error),
     /// No entry matched the given selector.
     NotFound(String),
@@ -187,13 +187,13 @@ impl std::fmt::Display for Error {
     }
 }
 impl std::error::Error for Error {}
-impl From<os_switcher_efi::Error> for Error {
-    fn from(e: os_switcher_efi::Error) -> Self {
+impl From<crate::efi::Error> for Error {
+    fn from(e: crate::efi::Error) -> Self {
         Error::Efi(e)
     }
 }
-impl From<os_switcher_bcd::Error> for Error {
-    fn from(e: os_switcher_bcd::Error) -> Self {
+impl From<crate::bcd::Error> for Error {
+    fn from(e: crate::bcd::Error) -> Self {
         Error::Bcd(e)
     }
 }
@@ -335,7 +335,7 @@ impl<N: Nvram> Switcher<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use os_switcher_efi::Efi;
+    use crate::efi::Efi;
     use regf_rs::{Hive, RegValue};
     use std::collections::HashMap;
 
@@ -346,11 +346,11 @@ mod tests {
         fn read(&self, name: &str) -> Option<Vec<u8>> {
             self.vars.get(name).cloned()
         }
-        fn write(&mut self, name: &str, data: &[u8]) -> os_switcher_efi::Result<()> {
+        fn write(&mut self, name: &str, data: &[u8]) -> crate::efi::Result<()> {
             self.vars.insert(name.to_string(), data.to_vec());
             Ok(())
         }
-        fn delete(&mut self, name: &str) -> os_switcher_efi::Result<()> {
+        fn delete(&mut self, name: &str) -> crate::efi::Result<()> {
             self.vars.remove(name);
             Ok(())
         }
@@ -382,7 +382,7 @@ mod tests {
 
     const W10: &str = "{aaaaaaaa-0000-0000-0000-000000000010}";
     const W11: &str = "{aaaaaaaa-0000-0000-0000-000000000011}";
-    const BOOTMGR: &str = os_switcher_bcd::BOOTMGR;
+    const BOOTMGR: &str = crate::bcd::BOOTMGR;
 
     fn synthetic_bcd() -> Bcd {
         let mut h = Hive::new_empty("BCD");

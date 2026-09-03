@@ -1,7 +1,7 @@
 //! Reboot and shutdown, delegated to the platform's standard tools.
 
-use crate::sys::quiet_command;
-use crate::Result;
+use crate::switcher::sys::quiet_command;
+use crate::switcher::Result;
 
 /// Reboots the machine.
 pub fn reboot() -> Result<()> {
@@ -40,7 +40,7 @@ fn run_power(action: PowerAction) -> Result<()> {
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 fn run_power(_action: PowerAction) -> Result<()> {
-    Err(crate::Error::Io(std::io::Error::new(
+    Err(crate::switcher::Error::Io(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
         "power control is not supported on this platform",
     )))

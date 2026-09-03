@@ -20,7 +20,7 @@
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
-use crate::{Error, Result};
+use crate::switcher::{Error, Result};
 
 /// Whether the current process can read and write firmware variables.
 ///
@@ -132,7 +132,7 @@ mod windows_impl {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-    use crate::{Error, Result};
+    use crate::switcher::{Error, Result};
 
     /// NUL-terminated UTF-16, as the Win32 `W` entry points want it.
     fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {

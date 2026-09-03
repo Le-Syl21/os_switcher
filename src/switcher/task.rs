@@ -17,8 +17,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::sys::quiet_command;
-use crate::{Error, Result};
+use crate::switcher::sys::quiet_command;
+use crate::switcher::{Error, Result};
 
 /// Task name, as it appears in the Task Scheduler library.
 pub const TASK_NAME: &str = "OS Switcher";
@@ -39,7 +39,7 @@ pub fn registered_target() -> Option<PathBuf> {
     if !output.status.success() {
         return None;
     }
-    let xml = crate::sys::decode_output(&output.stdout);
+    let xml = crate::switcher::sys::decode_output(&output.stdout);
     let (_, after) = xml.split_once("<Command>")?;
     let (command, _) = after.split_once("</Command>")?;
     Some(PathBuf::from(command.trim().trim_matches('"')))
@@ -95,7 +95,7 @@ pub fn install() -> Result<()> {
     } else {
         Err(Error::Elevation(format!(
             "could not register the task: {}",
-            crate::sys::decode_output(&output.stderr)
+            crate::switcher::sys::decode_output(&output.stderr)
         )))
     }
 }
@@ -111,7 +111,7 @@ pub fn uninstall() -> Result<()> {
     } else {
         Err(Error::Elevation(format!(
             "could not remove the task: {}",
-            crate::sys::decode_output(&output.stderr)
+            crate::switcher::sys::decode_output(&output.stderr)
         )))
     }
 }

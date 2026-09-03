@@ -2,7 +2,7 @@
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod real {
-    use crate::{Error, Nvram, Result};
+    use crate::efi::{Error, Nvram, Result};
     use efivar::efi::{Variable, VariableFlags};
     use efivar::VarManager;
 
@@ -49,7 +49,7 @@ mod real {
 pub use real::SystemNvram;
 
 /// On platforms without an `efivar` backend, `SystemNvram` is unavailable;
-/// the [`crate::Nvram`] trait and [`crate::Efi`] core still build and can run
+/// the [`super::Nvram`] trait and [`super::Efi`] core still build and can run
 /// over a custom backend.
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub struct SystemNvram;

@@ -1,7 +1,7 @@
 //! Tests of the BCD semantics on a synthetic multi-OS hive built
 //! with regf-rs (no real machine data).
 
-use os_switcher_bcd::{Bcd, BOOTMGR};
+use os_switcher::bcd::{Bcd, BOOTMGR};
 use regf_rs::{Hive, RegValue};
 
 const WIN10: &str = "{aaaaaaaa-0000-0000-0000-000000000001}";
@@ -95,6 +95,6 @@ fn rejects_non_bcd() {
     let bytes = Hive::new_empty("NOTBCD").to_bytes();
     assert!(matches!(
         Bcd::from_bytes(bytes),
-        Err(os_switcher_bcd::Error::NotABcd)
+        Err(os_switcher::bcd::Error::NotABcd)
     ));
 }

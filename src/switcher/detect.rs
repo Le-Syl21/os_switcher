@@ -3,10 +3,10 @@
 
 use std::path::Path;
 
-use os_switcher_bcd::Bcd;
-use os_switcher_efi::{Efi, OsKind, SystemNvram};
+use crate::bcd::Bcd;
+use crate::efi::{Efi, OsKind, SystemNvram};
 
-use crate::{BcdSlot, BcdStore, Switcher};
+use crate::switcher::{BcdSlot, BcdStore, Switcher};
 
 impl Switcher<SystemNvram> {
     /// Builds a switcher from the running system: reads the UEFI variables and,
@@ -34,7 +34,7 @@ impl Switcher<SystemNvram> {
 
     /// Like [`detect`](Self::detect) but with an explicit BCD file path, for
     /// systems where autodetection does not find the ESP.
-    pub fn detect_with_bcd(bcd_path: impl AsRef<Path>) -> crate::Result<Self> {
+    pub fn detect_with_bcd(bcd_path: impl AsRef<Path>) -> crate::switcher::Result<Self> {
         let efi = Efi::new(SystemNvram::open());
         let efi_id = efi
             .entries()
@@ -61,7 +61,9 @@ impl Switcher<SystemNvram> {
 fn system_bcd() -> Option<(Bcd, BcdStore)> {
     #[cfg(windows)]
     {
-        crate::bcdedit::export().ok().map(|b| (b, BcdStore::Live))
+        crate::switcher::bcdedit::export()
+            .ok()
+            .map(|b| (b, BcdStore::Live))
     }
     #[cfg(not(windows))]
     {

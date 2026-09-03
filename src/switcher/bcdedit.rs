@@ -6,19 +6,19 @@
 //! already on every Windows install.
 //!
 //! Reads go through `bcdedit /export`, which writes an unlocked *copy* of the
-//! live store — a plain REGF hive that [`os_switcher_bcd`] parses like any
+//! live store — a plain REGF hive that [`crate::bcd`] parses like any
 //! other. Writes use the GUID-taking subcommands. Neither depends on the
 //! system language, unlike parsing `bcdedit /enum` output.
 //!
-//! Every one of these calls needs an elevated token; see [`crate::elevate`].
+//! Every one of these calls needs an elevated token; see [`crate::switcher::elevate`].
 
 use std::path::PathBuf;
 use std::process::Output;
 
-use os_switcher_bcd::{Bcd, BOOTMGR};
+use crate::bcd::{Bcd, BOOTMGR};
 
-use crate::sys::{decode_output, quiet_command};
-use crate::{Error, Result};
+use crate::switcher::sys::{decode_output, quiet_command};
+use crate::switcher::{Error, Result};
 
 /// Reads the live store into memory.
 pub fn export() -> Result<Bcd> {
