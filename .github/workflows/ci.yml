@@ -68,16 +68,21 @@ jobs:
   build:
     needs: check
     if: startsWith(github.ref, 'refs/tags/v')
-    name: ${{ matrix.target }}
+    name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Each runner builds for its own architecture natively (no --target), so
+      # the matrix carries a clean asset label rather than the Rust triple:
+      # `linux-x86_64` reads better on a release page than
+      # `x86_64-unknown-linux-gnu`, and the "-msvc"/"-gnu" ABI suffix is noise
+      # to whoever is downloading.
       matrix:
         include:
-          - { os: ubuntu-24.04,     target: x86_64-unknown-linux-gnu,  kind: linux }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, kind: linux }
-          - { os: windows-2022,     target: x86_64-pc-windows-msvc,    kind: windows }
-          - { os: windows-11-arm,   target: aarch64-pc-windows-msvc,   kind: windows }
+          - { os: ubuntu-24.04,     label: linux-x86_64,    kind: linux }
+          - { os: ubuntu-24.04-arm, label: linux-aarch64,   kind: linux }
+          - { os: windows-2022,     label: windows-x86_64,  kind: windows }
+          - { os: windows-11-arm,   label: windows-aarch64, kind: windows }
     steps:
       - uses: actions/checkout@v7
 
@@ -96,7 +101,7 @@ jobs:
       - name: Package (Linux)
         if: matrix.kind == 'linux'
         run: |
-          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.label }}"
           mkdir -p "$name"
           cp target/release/os-switcher "$name/"
           cp -r packaging README.md "$name/"
@@ -106,7 +111,7 @@ jobs:
         if: matrix.kind == 'windows'
         shell: pwsh
         run: |
-          $name = "os-switcher-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          $name = "os-switcher-$env:GITHUB_REF_NAME-${{ matrix.label }}"
           New-Item -ItemType Directory -Force -Path $name | Out-Null
           Copy-Item target/release/os-switcher.exe $name/
           Copy-Item README.md $name/
@@ -115,8 +120,8 @@ jobs:
       - name: Upload archive artifact
         uses: actions/upload-artifact@v7
         with:
-          name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
-          path: os-switcher-${{ github.ref_name }}-${{ matrix.target }}.*
+          name: os-switcher-${{ github.ref_name }}-${{ matrix.label }}
+          path: os-switcher-${{ github.ref_name }}-${{ matrix.label }}.*
 
   # Authenticode-sign the Windows binaries with ssign — the Linux runner signs
   # them via Certum (no Windows, no vendor stack). Behind the `signing`
@@ -130,7 +135,7 @@ jobs:
     environment: signing
     strategy:
       matrix:
-        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+        label: [windows-x86_64, windows-aarch64]
     steps:
       - name: Install ssign (prebuilt binary from the latest release)
         run: |
@@ -140,7 +145,7 @@ jobs:
       - name: Download the archive
         uses: actions/download-artifact@v8
         with:
-          name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
+          name: os-switcher-${{ github.ref_name }}-${{ matrix.label }}
           path: dl
 
       - name: Sign os-switcher.exe with ssign (via Certum)
@@ -149,7 +154,7 @@ jobs:
           CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
         run: |
           cd dl
-          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          name="os-switcher-${GITHUB_REF_NAME}-${{ matrix.label }}"
           unzip -o "$name.zip"
           ssign --verbose \
             -n "os-switcher" -u "https://github.com/${{ github.repository }}" \
@@ -172,8 +177,8 @@ jobs:
       - name: Re-upload the signed archive
         uses: actions/upload-artifact@v7
         with:
-          name: os-switcher-${{ github.ref_name }}-${{ matrix.target }}
-          path: dl/os-switcher-${{ github.ref_name }}-${{ matrix.target }}.zip
+          name: os-switcher-${{ github.ref_name }}-${{ matrix.label }}
+          path: dl/os-switcher-${{ github.ref_name }}-${{ matrix.label }}.zip
           overwrite: true
 
   release:
