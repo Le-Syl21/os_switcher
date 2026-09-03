@@ -35,10 +35,6 @@ mod sys;
 #[cfg(windows)]
 mod bcdedit;
 
-/// Permanent elevation through a Windows scheduled task.
-#[cfg(windows)]
-pub mod task;
-
 #[cfg(windows)]
 pub mod winbroker;
 
@@ -80,6 +76,29 @@ pub struct Entry {
     /// Whether this is armed for the next boot.
     pub is_next: bool,
     target: BootTarget,
+}
+
+impl Entry {
+    /// Builds a display-only entry from data the broker returned. The UI selects
+    /// by `key` (handed back to the broker), so the routing target is never
+    /// consulted — a placeholder stands in for it.
+    #[cfg(all(windows, feature = "gui"))]
+    pub(crate) fn display_only(
+        key: String,
+        label: String,
+        kind: OsKind,
+        is_default: bool,
+        is_next: bool,
+    ) -> Self {
+        Entry {
+            key,
+            label,
+            kind,
+            is_default,
+            is_next,
+            target: BootTarget::Efi { id: 0 },
+        }
+    }
 }
 
 /// How a paired BCD store is written back — and re-read afterwards.

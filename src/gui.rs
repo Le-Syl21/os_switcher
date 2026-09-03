@@ -46,15 +46,14 @@ pub fn run() -> std::process::ExitCode {
     }
     let bcd = cli.bcd;
 
-    // On Windows the UI cannot even *list* the entries without an elevated
-    // token, so secure it before showing a window: the registered task first
-    // (no prompt at all), UAC otherwise.
+    // On Windows the UI cannot even *list* the entries without privileges. Two
+    // ways to get them: the installed service broker (the UI stays unprivileged
+    // and talks to it — no prompt at all), or a UAC prompt when the broker is
+    // not installed.
     #[cfg(windows)]
     {
-        if !is_elevated() {
-            if crate::switcher::task::launch() {
-                return ExitCode::SUCCESS;
-            }
+        use crate::switcher::winbroker;
+        if !winbroker::is_installed() && !is_elevated() {
             let args: Vec<std::ffi::OsString> = match &bcd {
                 Some(path) => vec!["--bcd".into(), path.clone().into_os_string()],
                 None => Vec::new(),
@@ -68,16 +67,6 @@ pub fn run() -> std::process::ExitCode {
                     ExitCode::FAILURE
                 }
             };
-        }
-
-        // Elevated at last. If the prompt-free task points at a copy of this
-        // binary that has since moved, re-register it now, while we still hold
-        // the rights to do so.
-        {
-            use crate::switcher::task;
-            if task::is_installed() && !task::is_current() {
-                let _ = task::install();
-            }
         }
     }
 
@@ -181,6 +170,13 @@ fn spawn(ctx: &egui::Context, bcd: Option<PathBuf>, job: Job) -> Receiver<JobRes
 }
 
 fn perform(bcd: &Option<PathBuf>, job: Job) -> JobResult {
+    // With the broker installed, read and write go through the service — no
+    // elevation, on the unprivileged UI thread's worker.
+    #[cfg(windows)]
+    if crate::switcher::winbroker::is_installed() {
+        return broker_perform(job);
+    }
+
     if let Job::Apply { verb, selector } = &job {
         if is_elevated() {
             apply(bcd, verb, selector.as_deref()).map_err(|e| e.to_string())?;
@@ -192,6 +188,41 @@ fn perform(bcd: &Option<PathBuf>, job: Job) -> JobResult {
         }
     }
     read_entries(bcd)
+}
+
+/// The broker equivalent of [`perform`]: apply through the service, then re-read
+/// from it. Applies the same "hide firmware-only entries" rule as
+/// [`read_entries`].
+#[cfg(windows)]
+fn broker_perform(job: Job) -> JobResult {
+    use crate::switcher::{winbroker, Scope};
+
+    if let Job::Apply { verb, selector } = &job {
+        let outcome = match (*verb, selector.as_deref()) {
+            ("default", Some(s)) => winbroker::set(s, Scope::Default),
+            ("next", Some(s)) => winbroker::set(s, Scope::Once),
+            _ => winbroker::clear_next(),
+        };
+        outcome.map_err(|e| e.to_string())?;
+    }
+
+    let entries = winbroker::get_entries().map_err(|e| e.to_string())?;
+    let to_entry = |e: &winbroker::BrokerEntry| {
+        Entry::display_only(
+            e.key.clone(),
+            e.label.clone(),
+            e.kind,
+            e.is_default,
+            e.is_next,
+        )
+    };
+    let os_only: Vec<Entry> = entries
+        .iter()
+        .filter(|e| e.kind != OsKind::Other)
+        .map(&to_entry)
+        .collect();
+    let all: Vec<Entry> = entries.iter().map(&to_entry).collect();
+    Ok(if os_only.is_empty() { all } else { os_only })
 }
 
 /// Performs one action directly, with the privileges this process already has.
@@ -264,7 +295,7 @@ impl SwitcherApp {
             loaded: false,
             in_menu: crate::switcher::shortcut::is_present(),
             #[cfg(windows)]
-            no_prompt: crate::switcher::task::is_installed(),
+            no_prompt: crate::switcher::winbroker::is_installed(),
         }
     }
 
@@ -524,11 +555,11 @@ impl SwitcherApp {
         });
     }
 
-    /// The "stop asking me" switch: registers the scheduled task that carries
-    /// the elevation, so later launches start straight into the app.
+    /// The "stop asking me" switch: installs the service broker (one UAC
+    /// prompt), after which the app reads and writes without prompting.
     #[cfg(windows)]
     fn no_prompt_toggle(&mut self, ui: &mut egui::Ui) {
-        use crate::switcher::task;
+        use crate::switcher::winbroker;
 
         let mut wanted = self.no_prompt;
         let response = ui
@@ -536,9 +567,9 @@ impl SwitcherApp {
             .on_hover_text(t!("no_prompt_hint"));
         if response.changed() {
             let outcome = if wanted {
-                task::install()
+                winbroker::install()
             } else {
-                task::uninstall()
+                winbroker::uninstall(false)
             };
             match outcome {
                 Ok(()) => {

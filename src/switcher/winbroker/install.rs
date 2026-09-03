@@ -497,7 +497,10 @@ pub fn run_repair() -> Result<()> {
 /// Removes the old scheduled-task registration if present (ignore if absent):
 /// two elevation paths active at once would be a bug.
 fn remove_legacy_task() {
-    let _ = crate::switcher::task::uninstall();
+    // The task the pre-broker builds registered under this name.
+    let _ = quiet_command("schtasks")
+        .args(["/delete", "/f", "/tn", "OS Switcher"])
+        .output();
 }
 
 // ---- Uninstall registry entry ------------------------------------------------

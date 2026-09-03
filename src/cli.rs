@@ -57,13 +57,6 @@ pub(crate) enum Command {
     Reboot,
     /// Shut down now.
     Shutdown,
-    /// Manage the permanent authorization (Windows scheduled task).
-    #[cfg(windows)]
-    Elevation {
-        #[command(subcommand)]
-        action: ElevationAction,
-    },
-
     /// Install the privileged service broker (opt-in, one UAC prompt).
     #[cfg(windows)]
     Install,
@@ -81,18 +74,6 @@ pub(crate) enum Command {
     #[cfg(windows)]
     #[command(hide = true)]
     RunService,
-}
-
-/// Install, remove or query the no-prompt elevation task.
-#[cfg(windows)]
-#[derive(Subcommand, Clone)]
-pub(crate) enum ElevationAction {
-    /// Register the task, so later launches skip the UAC prompt.
-    Install,
-    /// Remove the task and go back to prompting.
-    Remove,
-    /// Report whether the task is registered.
-    Status,
 }
 
 /// Entry point of the `os-switcher` binary.
@@ -188,17 +169,26 @@ fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
             }
             _ => {}
         }
+
+        // Boot commands go through the installed broker (zero UAC) rather than
+        // the local Switcher + elevation.
+        let boot = matches!(
+            command,
+            Command::List
+                | Command::Status
+                | Command::Default { .. }
+                | Command::Next { .. }
+                | Command::Clear
+        );
+        if boot && winbroker::is_installed() {
+            return broker_dispatch(&command);
+        }
     }
 
     // Anything left touches the firmware. If this process cannot, re-run the
     // whole command elevated and relay its output back.
     if needs_elevation(&command) && !is_elevated() {
         return escalate(cli);
-    }
-
-    #[cfg(windows)]
-    if let Command::Elevation { action } = &command {
-        return elevation(action);
     }
 
     let mut switcher = match &cli.bcd {
@@ -223,8 +213,7 @@ fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
         }
         Command::Reboot | Command::Shutdown => unreachable!("handled above"),
         #[cfg(windows)]
-        Command::Elevation { .. }
-        | Command::Install
+        Command::Install
         | Command::Uninstall { .. }
         | Command::RepairService
         | Command::RunService => unreachable!("handled above"),
@@ -237,17 +226,6 @@ fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
 /// `SeSystemEnvironmentPrivilege`, which only an elevated token holds. On Linux
 /// the variables are world-readable, so only the writes need root.
 fn needs_elevation(command: &Command) -> bool {
-    // Reading back the task registration is the one thing that touches neither.
-    #[cfg(windows)]
-    if matches!(
-        command,
-        Command::Elevation {
-            action: ElevationAction::Status
-        }
-    ) {
-        return false;
-    }
-
     if cfg!(windows) {
         true
     } else {
@@ -292,29 +270,99 @@ fn escalate(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
     }
 }
 
-/// `os-switcher elevation …` — the permanent-authorization task.
+// ---- Broker path (Windows, when the service is installed) --------------------
+
+/// Runs a boot command through the installed service broker (zero UAC), instead
+/// of the local Switcher + elevation.
 #[cfg(windows)]
-fn elevation(action: &ElevationAction) -> Result<String, Box<dyn std::error::Error>> {
-    use crate::switcher::task;
-    Ok(match action {
-        ElevationAction::Install => {
-            task::install()?;
-            format!(
-                "registered the '{}' task: launches no longer prompt",
-                task::TASK_NAME
-            )
+fn broker_dispatch(command: &Command) -> Result<String, Box<dyn std::error::Error>> {
+    use crate::switcher::{winbroker, Scope};
+
+    let choose = |selector: &str| -> Result<crate::switcher::winbroker::BrokerEntry, String> {
+        let entries = winbroker::get_entries().map_err(|e| e.to_string())?;
+        resolve_broker(&entries, selector)
+            .cloned()
+            .ok_or_else(|| format!("no entry matches '{selector}'"))
+    };
+
+    Ok(match command {
+        Command::List => broker_list(&winbroker::get_entries()?),
+        Command::Status => broker_status(&winbroker::get_entries()?),
+        Command::Default { selector } => {
+            let e = choose(selector)?;
+            winbroker::set(&e.key, Scope::Default)?;
+            format!("default OS set to: {}", e.label)
         }
-        ElevationAction::Remove => {
-            task::uninstall()?;
-            "removed the task: launches prompt again".to_string()
+        Command::Next { selector } => {
+            let e = choose(selector)?;
+            winbroker::set(&e.key, Scope::Once)?;
+            format!("next boot armed for: {} (one-shot)", e.label)
         }
-        ElevationAction::Status => if task::is_installed() {
-            "registered: launches do not prompt"
-        } else {
-            "not registered: every launch prompts"
+        Command::Clear => {
+            winbroker::clear_next()?;
+            "one-shot selection cleared".to_string()
         }
-        .to_string(),
+        _ => unreachable!("broker_dispatch only handles boot commands"),
     })
+}
+
+/// Resolves a selector (index, key, or label substring) against broker entries —
+/// the same rule as [`crate::switcher::Switcher::find`].
+#[cfg(windows)]
+fn resolve_broker<'a>(
+    entries: &'a [crate::switcher::winbroker::BrokerEntry],
+    selector: &str,
+) -> Option<&'a crate::switcher::winbroker::BrokerEntry> {
+    if let Ok(i) = selector.parse::<usize>() {
+        if let Some(e) = entries.get(i) {
+            return Some(e);
+        }
+    }
+    if let Some(e) = entries
+        .iter()
+        .find(|e| e.key.eq_ignore_ascii_case(selector))
+    {
+        return Some(e);
+    }
+    let needle = selector.to_ascii_lowercase();
+    entries
+        .iter()
+        .find(|e| e.label.to_ascii_lowercase().contains(&needle))
+}
+
+#[cfg(windows)]
+fn broker_list(entries: &[crate::switcher::winbroker::BrokerEntry]) -> String {
+    if entries.is_empty() {
+        return "no boot entries found (is this a UEFI system?)".to_string();
+    }
+    let mut out = String::new();
+    for (i, e) in entries.iter().enumerate() {
+        let mark = match (e.is_default, e.is_next) {
+            (true, true) => "*>",
+            (true, false) => "* ",
+            (false, true) => " >",
+            (false, false) => "  ",
+        };
+        out.push_str(&format!(
+            "{i:>2} {mark} {:<8} {}\n",
+            os_label(e.kind),
+            e.label
+        ));
+    }
+    out.push_str("\n  * default    > next boot");
+    out
+}
+
+#[cfg(windows)]
+fn broker_status(entries: &[crate::switcher::winbroker::BrokerEntry]) -> String {
+    let default = entries.iter().find(|e| e.is_default);
+    let next = entries.iter().find(|e| e.is_next);
+    format!(
+        "default:   {}\nnext boot: {}",
+        default.map(|e| e.label.as_str()).unwrap_or("(unknown)"),
+        next.map(|e| e.label.as_str())
+            .unwrap_or("(none — follows default)")
+    )
 }
 
 fn list<N: crate::switcher::Nvram>(switcher: &Switcher<N>) -> String {
