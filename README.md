@@ -24,25 +24,28 @@ it from one (redirection with `>` still works).
 The Microsoft C runtime is linked statically, so the `.exe` needs no
 `vcruntime140.dll` or any other redistributable beside it.
 
-## Workspace
+## Structure
 
-| Crate | Role |
-|-------|------|
-| [`regf-rs`](https://crates.io/crates/regf-rs) | Windows Registry hive (REGF) reader + in-place writer, pure Rust (published) |
-| `os-switcher-bcd` | BCD semantics over `regf-rs` (default / boot sequence) |
-| `os-switcher-efi` | UEFI `BootOrder` / `BootNext` over `efivar` |
-| `os-switcher-core` | unified model over EFI + BCD, elevation, reboot/shutdown |
-| `os-switcher` | the binary: CLI + eframe GUI |
+One crate, two binaries: `os-switcher` (the small CLI, no GUI stack) and
+`os-switcher-gui` (the eframe/egui window, behind the `gui` feature). The
+library modules:
+
+| Module | Role |
+|--------|------|
+| `efi` | UEFI `BootOrder` / `BootNext` over `efivar` |
+| `bcd` | BCD semantics over [`regf-rs`](https://crates.io/crates/regf-rs) (default / boot sequence) |
+| `switcher` | unified model over EFI + BCD, elevation, reboot/shutdown |
+| `winbroker` | Windows opt-in service broker (see [Privileges](#privileges)) |
 
 ## Usage
 
-GUI (no arguments, or a double-click):
+GUI (double-click, or run with no arguments):
 
 ```sh
-os-switcher
+os-switcher-gui
 ```
 
-CLI (bypasses the UI):
+CLI:
 
 ```sh
 os-switcher list                 # list bootable entries
@@ -74,11 +77,12 @@ Approving a prompt every single time is not a workflow. Both platforms have a
 supported way to grant the permission once and keep it:
 
 - **Windows** — tick *"Skip the approval prompt"* in the app (or run
-  `os-switcher elevation install`). That registers a scheduled task set to run
-  with highest privileges; later launches start it with `schtasks /run`, which
-  needs no consent because consent was given when the task was created. The
-  task takes no arguments and always just opens the GUI, so it cannot be used
-  to run something else elevated. `os-switcher elevation remove` undoes it.
+  `os-switcher install`). That installs a small service (`os-switcher-broker`,
+  LocalSystem) under `%ProgramFiles%`; the app then talks to it over a named
+  pipe and never prompts. The service answers exactly three requests — read the
+  boot state, arm a selection, clear it — each validated against the machine's
+  real entries, and runs no arbitrary command. `os-switcher uninstall` undoes
+  it. This is opt-in: without it, the app works through a per-use UAC prompt.
 - **Linux** — install the polkit policy from [`packaging/`](packaging/). It
   lets the user physically at the machine act without a password, and falls
   back to admin authentication for anything remote.

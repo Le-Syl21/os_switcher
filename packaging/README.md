@@ -39,22 +39,29 @@ threat model does not accept it.
 
 Two self-contained executables, no Visual C++ redistributable needed:
 `os-switcher-gui.exe` is the app you double-click (it opens no console window),
-`os-switcher.exe` is the CLI. Keep them side by side, so `os-switcher elevation
-install` can find and register the GUI binary next to it (the GUI itself needs
-no sibling — it re-runs itself elevated).
+`os-switcher.exe` is the CLI. Keep them side by side.
 
-Elevation is asked for at launch, because reading the firmware variables
-already requires it. To be asked only once, tick *"Skip the approval prompt"*
-in the app, or:
+Reading the firmware boot entries needs an elevated token on Windows, so out of
+the box every launch asks for **UAC** — the GUI once per session, the CLI once
+per command. That works with nothing installed.
+
+To stop the prompts, install the **service broker** (opt-in, one UAC prompt):
+tick *"Skip the approval prompt"* in the app, or:
 
 ```powershell
-os-switcher elevation install   # one UAC prompt, then never again
-os-switcher elevation status
-os-switcher elevation remove
+os-switcher install               # one UAC prompt
+os-switcher uninstall             # (add --purge to also drop the saved state)
+os-switcher repair-service        # re-point the service after moving the files
 ```
 
-This registers a scheduled task ("OS Switcher") that runs with highest
-privileges; the app starts it with `schtasks /run`, which needs no consent. The
-task's action is fixed — the GUI executable, with no arguments — so it cannot be
-used to run anything else elevated. Move the executable and the app re-registers
-the task the next time it runs elevated.
+Install copies both executables to `%ProgramFiles%\os-switcher\` and registers a
+small Windows service (`os-switcher-broker`, running as LocalSystem). From then
+on the app talks to it over a named pipe and never prompts. The service answers
+exactly three requests — read the boot state, arm a selection, clear it — each
+validated against the machine's real entries; it runs no arbitrary command and
+takes no path from the caller. Remove it with `uninstall` (or from *Apps &
+features*), and every launch goes back to a UAC prompt.
+
+The signature is shown for information only: the project is open source, so a
+build you compiled yourself works exactly the same — the UAC dialog naming the
+publisher is what tells signed from unsigned.
