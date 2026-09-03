@@ -55,8 +55,9 @@ os-switcher repair-service        # re-point the service after moving the files
 ```
 
 Install copies both executables to `%ProgramFiles%\os-switcher\` and registers a
-small Windows service (`os-switcher-broker`, running as LocalSystem). From then
-on the app talks to it over a named pipe and never prompts. The service answers
+small Windows service (`os-switcher-broker`, running as LocalSystem, started on
+demand when the app opens its pipe — nothing runs at boot). From then on the app
+talks to it over a named pipe and never prompts. The service answers
 exactly three requests — read the boot state, arm a selection, clear it — each
 validated against the machine's real entries; it runs no arbitrary command and
 takes no path from the caller. Remove it with `uninstall` (or from *Apps &

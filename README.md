@@ -83,9 +83,11 @@ supported way to grant the permission once and keep it:
   boot state, arm a selection, clear it — each validated against the machine's
   real entries, and runs no arbitrary command. `os-switcher uninstall` undoes
   it. This is opt-in: without it, the app works through a per-use UAC prompt.
-- **Linux** — install the polkit policy from [`packaging/`](packaging/). It
-  lets the user physically at the machine act without a password, and falls
-  back to admin authentication for anything remote.
+- **Linux** — tick the same banner, or run `os-switcher install`. It installs
+  the polkit policy (`allow_active`) and the CLI at `/usr/bin/os-switcher`, so
+  the user physically at the machine acts without a password while anything
+  remote still authenticates. `os-switcher uninstall` removes it; the policy
+  and manual steps are also in [`packaging/`](packaging/).
 
 ### How the boot store is reached
 
