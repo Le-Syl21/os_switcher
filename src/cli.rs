@@ -57,17 +57,12 @@ pub(crate) enum Command {
     Reboot,
     /// Shut down now.
     Shutdown,
-    /// Install the privileged service broker (opt-in, one UAC prompt).
-    #[cfg(windows)]
+    /// Install the prompt-free authorization (opt-in: the service broker on
+    /// Windows, the polkit policy on Linux).
     Install,
-    /// Remove the service broker.
-    #[cfg(windows)]
-    Uninstall {
-        /// Also delete the on-disk state.
-        #[arg(long)]
-        purge: bool,
-    },
-    /// Re-point the service at the installed binary after a move.
+    /// Remove the prompt-free authorization.
+    Uninstall,
+    /// Re-point the Windows service at the installed binary after a move.
     #[cfg(windows)]
     RepairService,
     /// Internal: the Service Control Manager's entry point. Not for manual use.
@@ -144,21 +139,25 @@ fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
         _ => {}
     }
 
-    // Service-broker lifecycle: not firmware operations, and each handles its
-    // own elevation (or is launched by the SCM already elevated), so they run
-    // before the firmware/escalation path below.
+    // Prompt-free authorization lifecycle (cross-platform): each handles its own
+    // elevation, so it runs before the firmware/escalation path below.
+    match &command {
+        Command::Install => {
+            crate::switcher::authz::install()?;
+            return Ok("prompt-free authorization installed".into());
+        }
+        Command::Uninstall => {
+            crate::switcher::authz::uninstall()?;
+            return Ok("prompt-free authorization removed".into());
+        }
+        _ => {}
+    }
+
+    // Windows-only: the service lifecycle and routing boot commands through it.
     #[cfg(windows)]
     {
         use crate::switcher::winbroker;
         match &command {
-            Command::Install => {
-                winbroker::install()?;
-                return Ok("service broker installed: launches no longer prompt".into());
-            }
-            Command::Uninstall { purge } => {
-                winbroker::uninstall(*purge)?;
-                return Ok("service broker removed".into());
-            }
             Command::RepairService => {
                 winbroker::repair()?;
                 return Ok("service broker re-pointed at the installed binary".into());
@@ -211,12 +210,11 @@ fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
             switcher.clear_next()?;
             "one-shot selection cleared".to_string()
         }
-        Command::Reboot | Command::Shutdown => unreachable!("handled above"),
+        Command::Reboot | Command::Shutdown | Command::Install | Command::Uninstall => {
+            unreachable!("handled above")
+        }
         #[cfg(windows)]
-        Command::Install
-        | Command::Uninstall { .. }
-        | Command::RepairService
-        | Command::RunService => unreachable!("handled above"),
+        Command::RepairService | Command::RunService => unreachable!("handled above"),
     })
 }
 

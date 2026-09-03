@@ -15,10 +15,10 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::Services::{
     ChangeServiceConfigW, CloseServiceHandle, ControlService, CreateServiceW, DeleteService,
-    OpenSCManagerW, OpenServiceW, QueryServiceConfigW, StartServiceW, QUERY_SERVICE_CONFIGW,
-    SC_HANDLE, SC_MANAGER_CONNECT, SC_MANAGER_CREATE_SERVICE, SERVICE_AUTO_START,
-    SERVICE_CONTROL_STOP, SERVICE_ERROR_NORMAL, SERVICE_NO_CHANGE, SERVICE_QUERY_CONFIG,
-    SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_STATUS, SERVICE_STOP, SERVICE_WIN32_OWN_PROCESS,
+    OpenSCManagerW, OpenServiceW, QueryServiceConfigW, QUERY_SERVICE_CONFIGW, SC_HANDLE,
+    SC_MANAGER_CONNECT, SC_MANAGER_CREATE_SERVICE, SERVICE_CONTROL_STOP, SERVICE_DEMAND_START,
+    SERVICE_ERROR_NORMAL, SERVICE_NO_CHANGE, SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS,
+    SERVICE_STATUS, SERVICE_STOP, SERVICE_WIN32_OWN_PROCESS,
 };
 
 /// The standard `DELETE` access right (`0x0001_0000`); windows-sys exposes it
@@ -303,7 +303,7 @@ fn do_install() -> Result<()> {
     remove_legacy_task();
     write_uninstall_key(&dir)?;
     let _ = create_shortcut(&dir.join(GUI_EXE));
-    let _ = start_service();
+    // No explicit start: the pipe trigger starts the service on first use.
     Ok(())
 }
 
@@ -322,21 +322,25 @@ fn copy_if_different(from: &Path, to: &Path) -> Result<()> {
 
 /// Creates the service, or re-points an existing one — `ChangeServiceConfig`
 /// rather than delete/recreate, to dodge `ERROR_SERVICE_MARKED_FOR_DELETE`.
+///
+/// The service is **demand-start with a named-pipe trigger**: the SCM starts it
+/// when a client opens the pipe and it is otherwise not running, so there is no
+/// resident process and no boot cost, and the (unprivileged) client needs no
+/// start permission.
 fn register_or_update_service(cli: &Path) -> Result<()> {
+    use windows_sys::Win32::System::Services::{SERVICE_ALL_ACCESS, SERVICE_CHANGE_CONFIG};
+
     // Quoted path, fixed argument (G2): the SCM takes the whole command line.
     let image = format!("\"{}\" run-service", cli.display());
+    let image_w = wide(&image);
     let scm = open_scm(SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE)?;
 
-    if let Some(service) = open_service(
-        &scm,
-        windows_sys::Win32::System::Services::SERVICE_CHANGE_CONFIG,
-    ) {
-        let image_w = wide(&image);
+    let service = if let Some(service) = open_service(&scm, SERVICE_CHANGE_CONFIG) {
         let ok = unsafe {
             ChangeServiceConfigW(
                 service.0,
                 SERVICE_NO_CHANGE,
-                SERVICE_AUTO_START,
+                SERVICE_DEMAND_START,
                 SERVICE_NO_CHANGE,
                 image_w.as_ptr(),
                 std::ptr::null(),
@@ -353,53 +357,85 @@ fn register_or_update_service(cli: &Path) -> Result<()> {
                 last_error()
             )));
         }
-        return Ok(());
-    }
-
-    let name = wide(SERVICE_NAME);
-    let display = wide(SERVICE_DISPLAY);
-    let image_w = wide(&image);
-    let handle = unsafe {
-        CreateServiceW(
-            scm.0,
-            name.as_ptr(),
-            display.as_ptr(),
-            windows_sys::Win32::System::Services::SERVICE_ALL_ACCESS,
-            SERVICE_WIN32_OWN_PROCESS,
-            SERVICE_AUTO_START,
-            SERVICE_ERROR_NORMAL,
-            image_w.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null_mut(),
-            std::ptr::null(),
-            std::ptr::null(), // LocalSystem
-            std::ptr::null(),
-        )
-    };
-    if handle.is_null() {
-        return Err(Error::Elevation(format!(
-            "could not create the service (error {})",
-            last_error()
-        )));
-    }
-    unsafe { CloseServiceHandle(handle) };
-    Ok(())
-}
-
-fn start_service() -> Result<()> {
-    let scm = open_scm(SC_MANAGER_CONNECT)?;
-    let Some(service) = open_service(&scm, SERVICE_START) else {
-        return Err(Error::Elevation("the service is not registered".into()));
-    };
-    let ok = unsafe { StartServiceW(service.0, 0, std::ptr::null()) };
-    if ok == 0 {
-        let e = last_error();
-        // ERROR_SERVICE_ALREADY_RUNNING (1056) is success for our purposes.
-        if e != 1056 {
+        service
+    } else {
+        let name = wide(SERVICE_NAME);
+        let display = wide(SERVICE_DISPLAY);
+        let handle = unsafe {
+            CreateServiceW(
+                scm.0,
+                name.as_ptr(),
+                display.as_ptr(),
+                SERVICE_ALL_ACCESS,
+                SERVICE_WIN32_OWN_PROCESS,
+                SERVICE_DEMAND_START,
+                SERVICE_ERROR_NORMAL,
+                image_w.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                std::ptr::null(), // LocalSystem
+                std::ptr::null(),
+            )
+        };
+        if handle.is_null() {
             return Err(Error::Elevation(format!(
-                "could not start the service (error {e})"
+                "could not create the service (error {})",
+                last_error()
             )));
         }
+        ScHandle(handle)
+    };
+
+    configure_pipe_trigger(&service)
+}
+
+/// Registers the named-pipe start trigger, so opening the broker pipe starts the
+/// service on demand.
+fn configure_pipe_trigger(service: &ScHandle) -> Result<()> {
+    use windows_sys::Win32::System::Services::NAMED_PIPE_EVENT_GUID;
+    use windows_sys::Win32::System::Services::{
+        ChangeServiceConfig2W, SERVICE_CONFIG_TRIGGER_INFO, SERVICE_TRIGGER,
+        SERVICE_TRIGGER_ACTION_SERVICE_START, SERVICE_TRIGGER_DATA_TYPE_STRING,
+        SERVICE_TRIGGER_INFO, SERVICE_TRIGGER_SPECIFIC_DATA_ITEM,
+        SERVICE_TRIGGER_TYPE_NETWORK_ENDPOINT,
+    };
+
+    // The trigger data is the pipe name without the `\\.\pipe\` prefix.
+    let pipe_name: Vec<u16> = "os-switcher-broker"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut data = SERVICE_TRIGGER_SPECIFIC_DATA_ITEM {
+        dwDataType: SERVICE_TRIGGER_DATA_TYPE_STRING,
+        cbData: (pipe_name.len() * 2) as u32,
+        pData: pipe_name.as_ptr() as *mut u8,
+    };
+    let mut subtype = NAMED_PIPE_EVENT_GUID;
+    let mut trigger = SERVICE_TRIGGER {
+        dwTriggerType: SERVICE_TRIGGER_TYPE_NETWORK_ENDPOINT,
+        dwAction: SERVICE_TRIGGER_ACTION_SERVICE_START,
+        pTriggerSubtype: &mut subtype,
+        cDataItems: 1,
+        pDataItems: &mut data,
+    };
+    let info = SERVICE_TRIGGER_INFO {
+        cTriggers: 1,
+        pTriggers: &mut trigger,
+        pReserved: std::ptr::null_mut(),
+    };
+    let ok = unsafe {
+        ChangeServiceConfig2W(
+            service.0,
+            SERVICE_CONFIG_TRIGGER_INFO,
+            (&info as *const SERVICE_TRIGGER_INFO).cast(),
+        )
+    };
+    if ok == 0 {
+        return Err(Error::Elevation(format!(
+            "could not set the pipe start trigger (error {})",
+            last_error()
+        )));
     }
     Ok(())
 }

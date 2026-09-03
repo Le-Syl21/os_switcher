@@ -138,10 +138,25 @@ no_prompt:
   de: Bestätigung überspringen
   es: Omitir la solicitud de permiso
 no_prompt_hint:
-  en: Registers a scheduled task so os-switcher starts with the rights it needs, without asking again.
-  fr: Enregistre une tâche planifiée pour qu'os-switcher démarre avec les droits nécessaires, sans redemander.
-  de: Registriert eine geplante Aufgabe, damit os-switcher ohne erneute Nachfrage mit den nötigen Rechten startet.
-  es: Registra una tarea programada para que os-switcher arranque con los permisos necesarios, sin volver a preguntar.
+  en: One-time setup so os-switcher gets the rights it needs without asking again.
+  fr: Configuration unique pour qu'os-switcher obtienne les droits nécessaires sans redemander.
+  de: Einmalige Einrichtung, damit os-switcher ohne erneute Nachfrage die nötigen Rechte erhält.
+  es: Configuración única para que os-switcher obtenga los permisos necesarios sin volver a preguntar.
+no_prompt_on:
+  en: No more prompts.
+  fr: Plus aucune demande.
+  de: Keine Nachfragen mehr.
+  es: Sin más solicitudes.
+install:
+  en: Set up
+  fr: Configurer
+  de: Einrichten
+  es: Configurar
+uninstall:
+  en: Undo
+  fr: Annuler
+  de: Rückgängig
+  es: Deshacer
 hint_privilege:
   en: Changing the boot OS asks for authorization.
   fr: Changer l'OS de démarrage demande une autorisation.

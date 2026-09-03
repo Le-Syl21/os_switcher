@@ -61,8 +61,12 @@ pub fn run_self_elevated<S: AsRef<OsStr>>(args: &[S]) -> Result<()> {
         let mut command = if is_elevated() {
             Command::new(&exe)
         } else {
+            // pkexec skips the prompt (allow_active) only for the binary the
+            // polkit policy names, so run the installed CLI when it is present;
+            // otherwise pkexec this binary and fall back to a prompt.
+            let target = crate::switcher::polkit::installed_cli().unwrap_or_else(|| exe.clone());
             let mut c = Command::new("pkexec");
-            c.arg(&exe);
+            c.arg(&target);
             c
         };
         command.args(args);

@@ -278,8 +278,8 @@ struct SwitcherApp {
     loaded: bool,
     /// Whether the desktop application menu has an entry for this app.
     in_menu: bool,
-    /// Windows: whether launches skip the approval prompt.
-    #[cfg(windows)]
+    /// Whether the prompt-free authorization is installed (service broker on
+    /// Windows, polkit policy on Linux).
     no_prompt: bool,
 }
 
@@ -294,8 +294,7 @@ impl SwitcherApp {
             confirm: None,
             loaded: false,
             in_menu: crate::switcher::shortcut::is_present(),
-            #[cfg(windows)]
-            no_prompt: crate::switcher::winbroker::is_installed(),
+            no_prompt: crate::switcher::authz::is_installed(),
         }
     }
 
@@ -527,8 +526,7 @@ impl SwitcherApp {
         ui.separator();
         ui.add_space(6.0);
 
-        #[cfg(windows)]
-        self.no_prompt_toggle(ui);
+        self.no_prompt_banner(ui);
 
         ui.horizontal(|ui| {
             ui.label(RichText::new(t!("language")).small().weak());
@@ -555,30 +553,46 @@ impl SwitcherApp {
         });
     }
 
-    /// The "stop asking me" switch: installs the service broker (one UAC
-    /// prompt), after which the app reads and writes without prompting.
-    #[cfg(windows)]
-    fn no_prompt_toggle(&mut self, ui: &mut egui::Ui) {
-        use crate::switcher::winbroker;
-
-        let mut wanted = self.no_prompt;
-        let response = ui
-            .checkbox(&mut wanted, RichText::new(t!("no_prompt")).small())
-            .on_hover_text(t!("no_prompt_hint"));
-        if response.changed() {
-            let outcome = if wanted {
-                winbroker::install()
+    /// The "authorize once" banner: when the prompt-free authorization is not
+    /// installed it offers to set it up (one prompt); once installed it says so
+    /// and offers to undo it. Flips between the two after each action.
+    fn no_prompt_banner(&mut self, ui: &mut egui::Ui) {
+        let installed = self.no_prompt;
+        ui.horizontal(|ui| {
+            let text = if installed {
+                t!("no_prompt_on")
             } else {
-                winbroker::uninstall(false)
+                t!("no_prompt")
             };
-            match outcome {
-                Ok(()) => {
-                    self.no_prompt = wanted;
-                    self.status = None;
+            ui.label(RichText::new(text).small().weak())
+                .on_hover_text(t!("no_prompt_hint"));
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let label = if installed {
+                    t!("uninstall")
+                } else {
+                    t!("install")
+                };
+                if ui
+                    .button(RichText::new(label).small())
+                    .on_hover_text(t!("no_prompt_hint"))
+                    .clicked()
+                {
+                    let outcome = if installed {
+                        crate::switcher::authz::uninstall()
+                    } else {
+                        crate::switcher::authz::install()
+                    };
+                    match outcome {
+                        Ok(()) => {
+                            self.no_prompt = !installed;
+                            self.status = None;
+                        }
+                        Err(e) => self.status = Some((e.to_string(), true)),
+                    }
                 }
-                Err(e) => self.status = Some((e.to_string(), true)),
-            }
-        }
+            });
+        });
         ui.add_space(4.0);
     }
 

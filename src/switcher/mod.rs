@@ -38,6 +38,13 @@ mod bcdedit;
 #[cfg(windows)]
 pub mod winbroker;
 
+/// Linux permanent authorization (the polkit policy).
+#[cfg(all(unix, not(windows)))]
+pub mod polkit;
+
+/// The cross-platform "authorize once" opt-in (broker on Windows, polkit on Linux).
+pub mod authz;
+
 pub mod shortcut;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
