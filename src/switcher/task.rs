@@ -50,12 +50,29 @@ pub fn is_installed() -> bool {
     registered_target().is_some()
 }
 
-/// Whether the task exists *and* still points at the running executable.
+/// The GUI executable the task must launch, derived from the running binary.
+///
+/// Either binary can register the task (the CLI's `elevation install`, or the
+/// GUI's toggle), but the task always launches the *graphical* one, so it is
+/// resolved as a sibling of whatever is running rather than from `current_exe`
+/// directly.
+fn gui_exe() -> Result<PathBuf> {
+    let exe = std::env::current_exe()
+        .map_err(|e| Error::Elevation(format!("cannot locate the running executable: {e}")))?;
+    let name = if cfg!(windows) {
+        "os-switcher-gui.exe"
+    } else {
+        "os-switcher-gui"
+    };
+    Ok(exe.with_file_name(name))
+}
+
+/// Whether the task exists *and* still points at the GUI binary next to us.
 ///
 /// A task left behind by a copy of the binary that has since moved would start
 /// nothing at all, silently — worse than asking for consent.
 pub fn is_current() -> bool {
-    let (Some(registered), Ok(exe)) = (registered_target(), std::env::current_exe()) else {
+    let (Some(registered), Ok(exe)) = (registered_target(), gui_exe()) else {
         return false;
     };
     same_file(&registered, &exe)
@@ -74,11 +91,11 @@ fn same_file(a: &Path, b: &Path) -> bool {
 ///
 /// Needs an elevated token — this is the one moment the user is asked.
 pub fn install() -> Result<()> {
-    let exe = std::env::current_exe()
-        .map_err(|e| Error::Elevation(format!("cannot locate the running executable: {e}")))?;
+    let exe = gui_exe()?;
     // schtasks takes the whole command line as one argument, so the path needs
-    // its own quotes inside it.
-    let action = format!("\"{}\" --gui", exe.display());
+    // its own quotes inside it. No arguments: run with none, the GUI binary
+    // opens its window (a subcommand would make it act as the CLI instead).
+    let action = format!("\"{}\"", exe.display());
 
     let output = quiet_command("schtasks")
         .args([

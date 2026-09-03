@@ -2,7 +2,7 @@
 Type=Application
 Name=OS Switcher
 Comment=Choose the next-boot or default operating system
-Exec=os-switcher
+Exec=os-switcher-gui
 Icon=os-switcher
 Categories=System;Settings;
 Terminal=false

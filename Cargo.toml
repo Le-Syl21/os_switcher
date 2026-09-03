@@ -25,7 +25,10 @@ required-features = ["gui"]
 
 [features]
 default = []
-gui = ["dep:eframe", "dep:egui"]
+# `eframe` is the only GUI dependency: it re-exports egui (used as
+# `eframe::egui`) and pulls its own default renderer, so there is nothing else
+# to declare or keep in step.
+gui = ["dep:eframe"]
 # Lets the `egui-mcp` server attach to a running instance, to drive and
 # screenshot the UI. Development only.
 inspection = ["gui", "eframe/inspection"]
@@ -35,9 +38,10 @@ regf-rs = "0.1"
 clap = { version = "4", features = ["derive"] }
 rust-i18n = "4"
 sys-locale = "0.3"
-egui = { version = "0.36", optional = true }
-# Mirror exiftool-rs: render with glow (OpenGL), not wgpu — eframe 0.35+ made
-# wgpu the default and its D3D12 backend fails to build on Windows.
+# The only GUI dependency: eframe re-exports egui (used as `eframe::egui`) and
+# brings the windowing and renderer. Render with glow (OpenGL), not the default
+# wgpu — wgpu roughly doubles the dependency tree and its D3D12 backend fails to
+# build on Windows (the reason exiftool-rs pins glow too).
 eframe = { version = "0.36", optional = true, default-features = false, features = [
     "accesskit",
     "default_fonts",

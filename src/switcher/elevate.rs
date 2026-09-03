@@ -5,8 +5,9 @@
 //! variables requires `SeSystemEnvironmentPrivilege`, which an ordinary token
 //! does not hold.
 //!
-//! There is a single binary. When it needs privileges it does not have, it
-//! re-runs *itself* elevated with the arguments describing the action:
+//! When either binary needs privileges it does not have, it re-runs *itself*
+//! elevated with the arguments describing the action (the GUI binary, handed a
+//! subcommand, runs it and quits instead of opening a window):
 //!
 //! - **Linux** — through `pkexec`, which shows the polkit prompt (or none at
 //!   all on the active local session, see `packaging/`).
