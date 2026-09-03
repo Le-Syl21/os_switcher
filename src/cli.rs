@@ -63,12 +63,30 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: ElevationAction,
     },
+
+    /// Install the privileged service broker (opt-in, one UAC prompt).
+    #[cfg(windows)]
+    Install,
+    /// Remove the service broker.
+    #[cfg(windows)]
+    Uninstall {
+        /// Also delete the on-disk state.
+        #[arg(long)]
+        purge: bool,
+    },
+    /// Re-point the service at the installed binary after a move.
+    #[cfg(windows)]
+    RepairService,
+    /// Internal: the Service Control Manager's entry point. Not for manual use.
+    #[cfg(windows)]
+    #[command(hide = true)]
+    RunService,
 }
 
 /// Install, remove or query the no-prompt elevation task.
 #[cfg(windows)]
 #[derive(Subcommand, Clone)]
-enum ElevationAction {
+pub(crate) enum ElevationAction {
     /// Register the task, so later launches skip the UAC prompt.
     Install,
     /// Remove the task and go back to prompting.
@@ -145,6 +163,33 @@ fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
         _ => {}
     }
 
+    // Service-broker lifecycle: not firmware operations, and each handles its
+    // own elevation (or is launched by the SCM already elevated), so they run
+    // before the firmware/escalation path below.
+    #[cfg(windows)]
+    {
+        use crate::switcher::winbroker;
+        match &command {
+            Command::Install => {
+                winbroker::install()?;
+                return Ok("service broker installed: launches no longer prompt".into());
+            }
+            Command::Uninstall { purge } => {
+                winbroker::uninstall(*purge)?;
+                return Ok("service broker removed".into());
+            }
+            Command::RepairService => {
+                winbroker::repair()?;
+                return Ok("service broker re-pointed at the installed binary".into());
+            }
+            Command::RunService => {
+                winbroker::run_service()?;
+                return Ok(String::new());
+            }
+            _ => {}
+        }
+    }
+
     // Anything left touches the firmware. If this process cannot, re-run the
     // whole command elevated and relay its output back.
     if needs_elevation(&command) && !is_elevated() {
@@ -178,7 +223,11 @@ fn dispatch(cli: &Cli) -> Result<String, Box<dyn std::error::Error>> {
         }
         Command::Reboot | Command::Shutdown => unreachable!("handled above"),
         #[cfg(windows)]
-        Command::Elevation { .. } => unreachable!("handled above"),
+        Command::Elevation { .. }
+        | Command::Install
+        | Command::Uninstall { .. }
+        | Command::RepairService
+        | Command::RunService => unreachable!("handled above"),
     })
 }
 

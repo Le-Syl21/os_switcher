@@ -73,6 +73,17 @@ jobs:
       - name: Tests (GUI)
         run: cargo test --features gui
 
+      # The gate runs on Linux, so `#[cfg(windows)]` code (the service broker,
+      # the elevation back-end) is otherwise only compiled at a tag, on the
+      # Windows build runners. Type-check it here on every PR against the
+      # windows-gnu target — no linker needed for `cargo check`/`clippy`, so it
+      # runs on the Linux runner and catches Windows-only breakage early.
+      - name: Type-check the Windows target
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+          cargo clippy --target x86_64-pc-windows-gnu --all-targets --features gui -- -D warnings
+
   build:
     needs: check
     if: startsWith(github.ref, 'refs/tags/v')

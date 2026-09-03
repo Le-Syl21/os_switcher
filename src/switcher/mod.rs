@@ -39,6 +39,9 @@ mod bcdedit;
 #[cfg(windows)]
 pub mod task;
 
+#[cfg(windows)]
+pub mod winbroker;
+
 pub mod shortcut;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
