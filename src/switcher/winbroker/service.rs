@@ -23,8 +23,19 @@ define_windows_service!(ffi_service_main, service_main);
 
 /// `run-service` entry point: block in the SCM dispatcher until the service ends.
 pub fn run() -> Result<()> {
+    harden_dll_search();
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)
         .map_err(|e| Error::Elevation(format!("service dispatcher failed to start: {e}")))
+}
+
+/// First thing in the service process: restrict DLL loading to `System32`, so a
+/// planted DLL on the search path cannot get itself loaded into SYSTEM (G6).
+fn harden_dll_search() {
+    use windows_sys::Win32::System::LibraryLoader::{
+        SetDefaultDllDirectories, LOAD_LIBRARY_SEARCH_SYSTEM32,
+    };
+    // Safe: no arguments but a constant flag; failure is non-fatal.
+    unsafe { SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32) };
 }
 
 /// Runs on the service thread once the dispatcher connects us to the SCM.
