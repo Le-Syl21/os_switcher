@@ -59,13 +59,30 @@ efivar = "2"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# The pipe protocol between the app (client) and the service (SYSTEM): a tiny,
+# strictly-typed JSON message, so serde is Windows-only.
 [target.'cfg(windows)'.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The SCM dispatcher and control handler; it depends on windows-sys itself, so
+# no second Windows binding is pulled.
+windows-service = "0.8"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Cryptography",
+    "Win32_Security_WinTrust",
     "Win32_Storage_FileSystem",
+    "Win32_System_Com",
     "Win32_System_Console",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_EventLog",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Pipes",
     "Win32_System_Registry",
+    "Win32_System_Services",
     "Win32_System_Threading",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
