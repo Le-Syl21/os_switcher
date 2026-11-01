@@ -42,7 +42,7 @@ sys-locale = "0.3"
 # brings the windowing and renderer. Render with glow (OpenGL), not the default
 # wgpu — wgpu roughly doubles the dependency tree and its D3D12 backend fails to
 # build on Windows (the reason exiftool-rs pins glow too).
-eframe = { version = "0.36", optional = true, default-features = false, features = [
+eframe = { version = "0.37", optional = true, default-features = false, features = [
     "accesskit",
     "default_fonts",
     "glow",
