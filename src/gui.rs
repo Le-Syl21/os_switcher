@@ -604,7 +604,7 @@ impl SwitcherApp {
             Power::Shutdown => (t!("confirm_shutdown_title"), t!("confirm_shutdown_body")),
         };
 
-        let modal = egui::Modal::new(egui::Id::new("confirm-power")).show(ctx, |ui| {
+        let modal = egui::Modal::new(egui::Id::unique("confirm-power")).show(ctx, |ui| {
             ui.set_max_width(300.0);
             ui.label(RichText::new(title).size(16.0).strong());
             ui.add_space(6.0);
