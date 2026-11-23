@@ -23,7 +23,7 @@ env:
 
 jobs:
   check:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
@@ -98,9 +98,11 @@ jobs:
       # to whoever is downloading.
       matrix:
         include:
+          # glibc floor: built natively, so this stays on the same Ubuntu as the arm64 job;
+          # ubuntu-latest (26.04) would raise the glibc the binary needs from 2.39 to 2.43, beyond Debian 13 and Ubuntu 24.04.
           - { os: ubuntu-24.04,     label: linux-x86_64,    kind: linux }
           - { os: ubuntu-24.04-arm, label: linux-aarch64,   kind: linux }
-          - { os: windows-2022,     label: windows-x86_64,  kind: windows }
+          - { os: windows-latest,     label: windows-x86_64,  kind: windows }
           - { os: windows-11-arm,   label: windows-aarch64, kind: windows }
     steps:
       - uses: actions/checkout@v7
@@ -248,7 +250,7 @@ jobs:
   release:
     needs: [build, sign-windows]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write # create the release and upload assets
     steps:
